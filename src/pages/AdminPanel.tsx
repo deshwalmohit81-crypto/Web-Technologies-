@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Lock, Mail, Phone, Calendar, Briefcase, FileText, Plus, Edit2, Trash2, LogOut, CheckCircle, AlertTriangle, Eye, Sparkles, Database, Users, TrendingUp, Cpu, X, MessageSquare, Send, Loader2, Key } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Blog, Portfolio, JobApplication, Lead, ClientProject, ClientTicket, Service, PricingPlan } from '../types.js';
+import { Blog, Portfolio, JobApplication, Lead, ClientProject, ClientTicket, Service, PricingPlan, JobListing } from '../types.js';
 import Logo from '../components/Logo';
 import GoogleFormsDashboard from '../components/GoogleFormsDashboard';
 
@@ -53,7 +53,7 @@ export default function AdminPanel() {
   });
 
   // Admin section state
-  const [activeTab, setActiveTab] = useState<'leads' | 'newsletters' | 'applications' | 'portfolios' | 'blogs' | 'client-projects' | 'client-tickets' | 'google-forms' | 'services' | 'pricing'>('leads');
+  const [activeTab, setActiveTab] = useState<'leads' | 'newsletters' | 'applications' | 'portfolios' | 'blogs' | 'client-projects' | 'client-tickets' | 'google-forms' | 'services' | 'pricing' | 'careers'>('leads');
 
   // Database lists
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -65,6 +65,7 @@ export default function AdminPanel() {
   const [clientTickets, setClientTickets] = useState<ClientTicket[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [plans, setPlans] = useState<PricingPlan[]>([]);
+  const [careers, setCareers] = useState<JobListing[]>([]);
 
   // Detailed Modal View triggers
   const [viewLead, setViewLead] = useState<Lead | null>(null);
@@ -79,6 +80,7 @@ export default function AdminPanel() {
   const [editingBlog, setEditingBlog] = useState<Partial<Blog> | null>(null);
   const [editingService, setEditingService] = useState<Partial<Service> | null>(null);
   const [editingPlan, setEditingPlan] = useState<Partial<PricingPlan> | null>(null);
+  const [editingCareer, setEditingCareer] = useState<Partial<JobListing> | null>(null);
 
   // Check storage on boot
   useEffect(() => {
@@ -127,6 +129,10 @@ export default function AdminPanel() {
       // Pricing Plans
       const prcRes = await fetch('/api/pricing');
       if (prcRes.ok) setPlans(await prcRes.json());
+
+      // Careers
+      const careerRes = await fetch('/api/careers');
+      if (careerRes.ok) setCareers(await careerRes.json());
 
       // Client Projects
       const clientProjRes = await fetch('/api/admin/client-projects', { headers });
@@ -331,8 +337,9 @@ export default function AdminPanel() {
   const handleDeleteItem = async (endpoint: string, id: string) => {
     if (!token || !window.confirm('Are you absolutely sure you want to delete this resource?')) return;
 
+    const url = endpoint === 'careers' ? `/api/careers/${id}` : `/api/admin/${endpoint}/${id}`;
     try {
-      const res = await fetch(`/api/admin/${endpoint}/${id}`, {
+      const res = await fetch(url, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -490,6 +497,35 @@ export default function AdminPanel() {
         fetchDashboardData(token);
       } else {
         alert('Could not synchronize pricing plan modifications.');
+      }
+    } catch (err) {
+      alert('Network error during serialization.');
+    }
+  };
+
+  // CAREER CREATE/UPDATE SUBMISSION
+  const handleCareerSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!token || !editingCareer) return;
+
+    const method = editingCareer.id ? 'PUT' : 'POST';
+    const endpoint = editingCareer.id ? `/api/careers/${editingCareer.id}` : '/api/careers';
+
+    try {
+      const res = await fetch(endpoint, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(editingCareer),
+      });
+
+      if (res.ok) {
+        setEditingCareer(null);
+        fetchDashboardData(token);
+      } else {
+        alert('Could not synchronize career modifications.');
       }
     } catch (err) {
       alert('Network error during serialization.');
@@ -858,7 +894,7 @@ export default function AdminPanel() {
 
           {/* Tab Selection */}
           <section id="admin-tab-bar" className="flex flex-wrap gap-2 pb-4 border-b border-white/10">
-            {(['leads', 'newsletters', 'applications', 'portfolios', 'blogs', 'services', 'pricing', 'client-projects', 'client-tickets', 'google-forms'] as const).map((tab) => (
+            {(['leads', 'newsletters', 'applications', 'portfolios', 'blogs', 'services', 'pricing', 'careers', 'client-projects', 'client-tickets', 'google-forms'] as const).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -1012,6 +1048,98 @@ export default function AdminPanel() {
                   {applications.length === 0 && (
                     <p className="text-slate-500 text-center py-12">No talent applications received yet.</p>
                   )}
+                </div>
+              </div>
+            )}
+
+            {/* CAREERS PANEL */}
+            {activeTab === 'careers' && (
+              <div className="space-y-6">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                  <div>
+                    <h3 className="text-lg font-display font-extrabold text-white tracking-tighter">Careers & Job Openings</h3>
+                    <p className="text-xs text-gray-400 font-mono">Publish, edit requirements, salaries, or deactivate job postings.</p>
+                  </div>
+                  <button
+                    onClick={() => setEditingCareer({
+                      title: '',
+                      department: 'Technology',
+                      location: 'Remote (India)',
+                      type: 'Full-time',
+                      experience: '3+ Years',
+                      salary: '₹12,0,000 - ₹18,0,000 PA',
+                      description: '',
+                      requirements: [],
+                      responsibilities: [],
+                      active: true
+                    })}
+                    className="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-4 py-2.5 rounded-full text-xs flex items-center space-x-2 transition-colors cursor-pointer border border-indigo-500/30"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Publish New Career Posting</span>
+                  </button>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs font-sans text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-white/10 text-gray-500 font-mono text-[10px] tracking-widest uppercase">
+                        <th className="pb-3 pr-4">JOB TITLE</th>
+                        <th className="pb-3 pr-4">DEPARTMENT / TYPE</th>
+                        <th className="pb-3 pr-4">SALARY</th>
+                        <th className="pb-3 pr-4">STATUS</th>
+                        <th className="pb-3 text-right">ACTIONS</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5 text-slate-300">
+                      {careers.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="py-8 text-center text-gray-500 font-mono">
+                            No career postings found. Add one or restart to seed defaults.
+                          </td>
+                        </tr>
+                      ) : (
+                        careers.map((job) => (
+                          <tr key={job.id} className="hover:bg-white/[0.02] transition-colors">
+                            <td className="py-4 pr-4">
+                              <span className="font-bold text-white block">{job.title}</span>
+                              <span className="text-[10px] text-gray-500 font-mono">{job.location}</span>
+                            </td>
+                            <td className="py-4 pr-4">
+                              <span className="text-blue-400 font-mono font-semibold block">{job.department}</span>
+                              <span className="text-[10px] text-gray-400 font-mono">{job.type} • Exp: {job.experience}</span>
+                            </td>
+                            <td className="py-4 pr-4 font-mono text-emerald-400 font-bold">{job.salary}</td>
+                            <td className="py-4 pr-4">
+                              {job.active ? (
+                                <span className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] px-2.5 py-0.5 rounded-full font-mono uppercase font-bold">
+                                  Active
+                                </span>
+                              ) : (
+                                <span className="bg-white/5 border border-white/10 text-gray-500 text-[10px] px-2.5 py-0.5 rounded-full font-mono uppercase font-bold">
+                                  Inactive
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-4 text-right space-x-2 whitespace-nowrap">
+                              <button
+                                onClick={() => setEditingCareer(job)}
+                                className="text-blue-400 hover:text-blue-300 bg-white/5 border border-white/10 px-3 py-1.5 rounded-full text-[11px] font-semibold transition-colors"
+                              >
+                                Edit Requirements & Salary
+                              </button>
+                              <button
+                                onClick={() => handleDeleteItem('careers', job.id)}
+                                className="text-rose-400 hover:text-rose-300 bg-white/5 border border-white/10 px-3 py-1.5 rounded-full text-[11px] font-semibold transition-colors"
+                              >
+                                Delete
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             )}
@@ -2200,6 +2328,177 @@ export default function AdminPanel() {
                         className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold px-6 py-2.5 rounded-full cursor-pointer transition-colors"
                       >
                         {editingPlan.id ? 'Save Changes' : 'Create Plan'}
+                      </button>
+                    </div>
+                  </form>
+                </motion.div>
+              </motion.div>
+            )}
+
+            {/* CAREER EDITOR MODAL */}
+            {editingCareer && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm overflow-y-auto"
+              >
+                <motion.div
+                  initial={{ scale: 0.95 }}
+                  animate={{ scale: 1 }}
+                  exit={{ scale: 0.95 }}
+                  className="bg-[#030014] border border-white/10 rounded-3xl max-w-lg w-full p-8 shadow-2xl text-left text-xs font-sans space-y-6 max-h-[90vh] overflow-y-auto"
+                >
+                  <div className="flex justify-between items-center border-b border-white/10 pb-3">
+                    <h3 className="text-base font-display font-extrabold tracking-tighter text-white">
+                      {editingCareer.id ? 'Modify Career Posting' : 'Publish New Career Posting'}
+                    </h3>
+                    <button onClick={() => setEditingCareer(null)} className="text-slate-400 hover:text-white">
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <form onSubmit={handleCareerSave} className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <label className="text-slate-400 font-mono tracking-wider">JOB TITLE</label>
+                        <input
+                          type="text"
+                          required
+                          value={editingCareer.title || ''}
+                          onChange={(e) => setEditingCareer({ ...editingCareer, title: e.target.value })}
+                          className="w-full bg-white/5 border border-white/10 rounded-full px-4 py-2 text-white focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-slate-400 font-mono tracking-wider">DEPARTMENT</label>
+                        <select
+                          value={editingCareer.department || 'Technology'}
+                          onChange={(e) => setEditingCareer({ ...editingCareer, department: e.target.value })}
+                          className="w-full bg-[#030014] border border-white/10 rounded-full px-4 py-2 text-white focus:outline-none focus:border-blue-500 cursor-pointer"
+                        >
+                          <option value="Technology">Technology</option>
+                          <option value="Design">Design</option>
+                          <option value="Marketing">Marketing</option>
+                          <option value="Business Operations">Business Operations</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-4">
+                      <div className="space-y-1.5">
+                        <label className="text-slate-400 font-mono tracking-wider">LOCATION</label>
+                        <input
+                          type="text"
+                          required
+                          value={editingCareer.location || 'Remote (India)'}
+                          onChange={(e) => setEditingCareer({ ...editingCareer, location: e.target.value })}
+                          className="w-full bg-white/5 border border-white/10 rounded-full px-4 py-2 text-white focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-slate-400 font-mono tracking-wider">JOB TYPE</label>
+                        <select
+                          value={editingCareer.type || 'Full-time'}
+                          onChange={(e) => setEditingCareer({ ...editingCareer, type: e.target.value as any })}
+                          className="w-full bg-[#030014] border border-white/10 rounded-full px-4 py-2 text-white focus:outline-none focus:border-blue-500 cursor-pointer"
+                        >
+                          <option value="Full-time">Full-time</option>
+                          <option value="Part-time">Part-time</option>
+                          <option value="Contract">Contract</option>
+                          <option value="Remote">Remote</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-slate-400 font-mono tracking-wider">EXPERIENCE REQUIRED</label>
+                        <input
+                          type="text"
+                          required
+                          value={editingCareer.experience || ''}
+                          onChange={(e) => setEditingCareer({ ...editingCareer, experience: e.target.value })}
+                          className="w-full bg-white/5 border border-white/10 rounded-full px-4 py-2 text-white focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-slate-400 font-mono tracking-wider">SALARY PACKAGE (e.g. ₹12,00,000 - ₹18,00,000 PA)</label>
+                      <input
+                        type="text"
+                        required
+                        value={editingCareer.salary || ''}
+                        onChange={(e) => setEditingCareer({ ...editingCareer, salary: e.target.value })}
+                        className="w-full bg-white/5 border border-white/10 rounded-full px-4 py-2 text-white focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-slate-400 font-mono tracking-wider">POSITION DESCRIPTION</label>
+                      <textarea
+                        required
+                        rows={3}
+                        value={editingCareer.description || ''}
+                        onChange={(e) => setEditingCareer({ ...editingCareer, description: e.target.value })}
+                        className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-2 text-white focus:outline-none focus:border-blue-500 resize-none leading-relaxed"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-slate-400 font-mono tracking-wider">KEY REQUIREMENTS & STACK (ONE PER LINE)</label>
+                      <textarea
+                        rows={4}
+                        required
+                        placeholder="Deep expertise in React 18/19, Next.js, and TypeScript.&#10;Robust experience building scalable backend services with Express.js.&#10;Familiarity with Tailwind CSS, Framer Motion, and layout engineering."
+                        value={editingCareer.requirements?.join('\n') || ''}
+                        onChange={(e) => setEditingCareer({
+                          ...editingCareer,
+                          requirements: e.target.value.split('\n').map(x => x.trim()).filter(x => x !== '')
+                        })}
+                        className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-2 text-white focus:outline-none focus:border-blue-500 leading-relaxed font-sans"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-slate-400 font-mono tracking-wider">POSITION RESPONSIBILITIES (ONE PER LINE)</label>
+                      <textarea
+                        rows={4}
+                        required
+                        placeholder="Architect, write, and deploy pristine, highly performant web applications.&#10;Review pull requests and ensure exceptional code quality across repositories.&#10;Collaborate with UI/UX design teams to translate wireframes into interactive layouts."
+                        value={editingCareer.responsibilities?.join('\n') || ''}
+                        onChange={(e) => setEditingCareer({
+                          ...editingCareer,
+                          responsibilities: e.target.value.split('\n').map(x => x.trim()).filter(x => x !== '')
+                        })}
+                        className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-2 text-white focus:outline-none focus:border-blue-500 leading-relaxed font-sans"
+                      />
+                    </div>
+
+                    <div className="flex items-center space-x-3 pt-2">
+                      <input
+                        type="checkbox"
+                        id="car-active-chk"
+                        checked={editingCareer.active ?? true}
+                        onChange={(e) => setEditingCareer({ ...editingCareer, active: e.target.checked })}
+                        className="w-4 h-4 rounded bg-white/5 border-white/10 text-blue-500 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+                      />
+                      <label htmlFor="car-active-chk" className="text-slate-300 font-mono cursor-pointer select-none tracking-wider text-[10px]">
+                        LISTING IS ACTIVE AND ACCEPTING APPLICATIONS
+                      </label>
+                    </div>
+
+                    <div className="pt-4 flex justify-end space-x-3">
+                      <button
+                        type="button"
+                        onClick={() => setEditingCareer(null)}
+                        className="bg-white/5 border border-white/10 text-gray-300 hover:text-white px-5 py-2.5 rounded-full cursor-pointer transition-colors"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold px-6 py-2.5 rounded-full cursor-pointer transition-colors"
+                      >
+                        Save Career Posting
                       </button>
                     </div>
                   </form>
