@@ -1,97 +1,158 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import * as Icons from 'lucide-react';
 import { Check, HelpCircle, ArrowUpRight, Zap, Flame, Award, ShieldCheck, Mail, Phone, User, CheckCircle2, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { PricingPlan } from '../types';
+
+const FALLBACK_PLANS: PricingPlan[] = [
+  {
+    id: 'starter',
+    name: 'Starter Plan',
+    price: 4999,
+    period: 'One-time',
+    tagline: 'Best for small businesses',
+    icon: 'Zap',
+    features: [
+      'Basic Informational Website',
+      '5 Responsive Pages',
+      'Structured Contact Inquiry Form',
+      'Standard Tailwind UI layout',
+      'Free Domain Mapping (web.deshwal.in sub)',
+      '1 Month Post-Launch Support',
+    ],
+    popular: false,
+  },
+  {
+    id: 'business',
+    name: 'Business Plan',
+    price: 9999,
+    period: 'One-time',
+    tagline: 'Perfect for scaling ventures',
+    icon: 'Flame',
+    features: [
+      'Dynamic Custom Website',
+      'Self-Serve Administrative Panel',
+      'On-page SEO Technical Alignment',
+      'Google Search Console setup',
+      'Up to 15 Responsive Pages',
+      'Database persistent leads tracker',
+      '3 Months Post-Launch Support',
+    ],
+    popular: true,
+  },
+  {
+    id: 'professional',
+    name: 'Professional Plan',
+    price: 19999,
+    period: 'One-time',
+    tagline: 'Complete e-commerce capability',
+    icon: 'Award',
+    features: [
+      'High-speed E-Commerce Platform',
+      'Razorpay Payments gateway integration',
+      'Granular Inventory management',
+      'Interactive administrative sales charts',
+      'Custom corporate database models',
+      'Technical SEO Schema configurations',
+      '6 Months Dedicated Support',
+    ],
+    popular: false,
+  },
+  {
+    id: 'enterprise',
+    name: 'Enterprise Plan',
+    price: 'Custom',
+    period: 'Bespoke contract',
+    tagline: 'Bespoke corporate architecture',
+    icon: 'ShieldCheck',
+    features: [
+      'Custom ERP & CRM architectures',
+      'Bespoke Cloud Infrastructure (Cloud Run)',
+      'Highly compliant secure JWT access controls',
+      'Gemini AI chat solutions integrated',
+      'Dedicated Developer & Solution Architect',
+      '24/7 Reaction SLA guarantees',
+      'Infinite Scale & Continuous Backups',
+    ],
+    popular: false,
+  },
+];
 
 export default function Pricing() {
-  const [activePlan, setActivePlan] = useState<any | null>(null);
+  const [activePlan, setActivePlan] = useState<PricingPlan | null>(null);
   const [userName, setUserName] = useState('');
   const [userEmail, setUserEmail] = useState('');
   const [userPhone, setUserPhone] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [checkoutStatus, setCheckoutStatus] = useState<'idle' | 'intake' | 'paying' | 'success' | 'error'>('idle');
   const [orderDetails, setOrderDetails] = useState<any>(null);
+  const [plans, setPlans] = useState<PricingPlan[]>([]);
+  const [plansLoading, setPlansLoading] = useState(true);
 
-  const plans = [
-    {
-      name: 'Starter Plan',
-      price: 4999,
-      period: 'One-time',
-      tagline: 'Best for small businesses',
-      icon: <Zap className="w-5 h-5 text-blue-400" />,
-      features: [
-        'Basic Informational Website',
-        '5 Responsive Pages',
-        'Structured Contact Inquiry Form',
-        'Standard Tailwind UI layout',
-        'Free Domain Mapping (web.deshwal.in sub)',
-        '1 Month Post-Launch Support',
-      ],
-      popular: false,
-    },
-    {
-      name: 'Business Plan',
-      price: 9999,
-      period: 'One-time',
-      tagline: 'Perfect for scaling ventures',
-      icon: <Flame className="w-5 h-5 text-fuchsia-400" />,
-      features: [
-        'Dynamic Custom Website',
-        'Self-Serve Administrative Panel',
-        'On-page SEO Technical Alignment',
-        'Google Search Console setup',
-        'Up to 15 Responsive Pages',
-        'Database persistent leads tracker',
-        '3 Months Post-Launch Support',
-      ],
-      popular: true,
-    },
-    {
-      name: 'Professional Plan',
-      price: 19999,
-      period: 'One-time',
-      tagline: 'Complete e-commerce capability',
-      icon: <Award className="w-5 h-5 text-violet-400" />,
-      features: [
-        'High-speed E-Commerce Platform',
-        'Razorpay Payments gateway integration',
-        'Granular Inventory management',
-        'Interactive administrative sales charts',
-        'Custom corporate database models',
-        'Technical SEO Schema configurations',
-        '6 Months Dedicated Support',
-      ],
-      popular: false,
-    },
-    {
-      name: 'Enterprise Plan',
-      price: 'Custom',
-      period: 'Bespoke contract',
-      tagline: 'Bespoke corporate architecture',
-      icon: <ShieldCheck className="w-5 h-5 text-emerald-400" />,
-      features: [
-        'Custom ERP & CRM architectures',
-        'Bespoke Cloud Infrastructure (Cloud Run)',
-        'Highly compliant secure JWT access controls',
-        'Gemini AI chat solutions integrated',
-        'Dedicated Developer & Solution Architect',
-        '24/7 Reaction SLA guarantees',
-        'Infinite Scale & Continuous Backups',
-      ],
-      popular: false,
-    },
-  ];
+  useEffect(() => {
+    const fetchPlans = async () => {
+      try {
+        const res = await fetch('/api/pricing');
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data) && data.length > 0) {
+            setPlans(data);
+          } else {
+            setPlans(FALLBACK_PLANS);
+          }
+        } else {
+          setPlans(FALLBACK_PLANS);
+        }
+      } catch (err) {
+        console.error('Error fetching plans:', err);
+        setPlans(FALLBACK_PLANS);
+      } finally {
+        setPlansLoading(false);
+      }
+    };
+    fetchPlans();
+  }, []);
 
-  const handleSelectPlan = (plan: any) => {
+  const getIconWithColor = (iconName: string) => {
+    const IconComponent = (Icons as any)[iconName] || Icons.Zap;
+    let colorClass = 'text-blue-400';
+    
+    switch(iconName.toLowerCase()) {
+      case 'zap':
+        colorClass = 'text-blue-400';
+        break;
+      case 'flame':
+        colorClass = 'text-fuchsia-400';
+        break;
+      case 'award':
+        colorClass = 'text-violet-400';
+        break;
+      case 'shieldcheck':
+      case 'shield-check':
+        colorClass = 'text-emerald-400';
+        break;
+      default:
+        colorClass = 'text-blue-400';
+    }
+    
+    return <IconComponent className="w-5 h-5" />;
+  };
+
+  const handleSelectPlan = (plan: PricingPlan) => {
     setActivePlan(plan);
     setCheckoutStatus('intake');
   };
 
   const handleInitiatePayment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!userName || !userEmail || !userPhone) return;
+    if (!userName || !userEmail || !userPhone || !activePlan) return;
 
     setIsLoading(true);
     setCheckoutStatus('paying');
+
+    const cleanPrice = typeof activePlan.price === 'number' 
+      ? activePlan.price 
+      : (parseInt(activePlan.price.replace(/[^0-9]/g, ''), 10) || 49999);
 
     try {
       const response = await fetch('/api/payments/create-order', {
@@ -99,7 +160,7 @@ export default function Pricing() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           planName: activePlan.name,
-          price: typeof activePlan.price === 'number' ? activePlan.price : 49999, // default custom
+          price: cleanPrice,
           clientName: userName,
           clientEmail: userEmail,
           clientPhone: userPhone,
@@ -150,79 +211,86 @@ export default function Pricing() {
           </p>
         </section>
 
-        {/* Plans Grid */}
-        <section id="pricing-cards-container" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {plans.map((plan, idx) => (
-            <div
-              key={idx}
-              className={`bg-white/5 border rounded-3xl p-8 flex flex-col justify-between relative group transition-all duration-300 ${
-                plan.popular
-                  ? 'border-purple-500/50 hover:border-purple-400 shadow-xl shadow-purple-500/5 hover:translate-y-[-4px]'
-                  : 'border-white/10 hover:border-white/20 hover:translate-y-[-4px]'
-              }`}
-            >
-              {plan.popular && (
-                <span className="absolute top-0 right-8 -translate-y-1/2 bg-gradient-to-r from-purple-600 to-blue-600 text-white font-mono text-[9px] font-bold tracking-widest uppercase px-3 py-1 rounded-full border border-purple-400/25">
-                  Most Popular
-                </span>
-              )}
-
-              <div className="space-y-6">
-                {/* Plan Header */}
-                <div className="space-y-3">
-                  <div className="w-10 h-10 rounded-xl bg-[#0a0a0a] border border-white/10 flex items-center justify-center">
-                    {plan.icon}
-                  </div>
-                  <h3 className="text-lg font-display font-bold text-white tracking-wide">
-                    {plan.name}
-                  </h3>
-                  <p className="text-[11px] text-gray-400 font-sans leading-relaxed">
-                    {plan.tagline}
-                  </p>
-                </div>
-
-                {/* Price */}
-                <div className="py-2">
-                  <span className="text-3xl font-display font-bold text-white tracking-tight font-mono">
-                    {typeof plan.price === 'number' ? `₹${plan.price.toLocaleString('en-IN')}` : plan.price}
+        {plansLoading ? (
+          <div className="flex flex-col items-center justify-center py-20 space-y-4">
+            <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+            <p className="text-xs text-gray-400 font-mono">Loading Dynamic Pricing Catalog...</p>
+          </div>
+        ) : (
+          /* Plans Grid */
+          <section id="pricing-cards-container" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {plans.map((plan, idx) => (
+              <div
+                key={idx}
+                className={`bg-white/5 border rounded-3xl p-8 flex flex-col justify-between relative group transition-all duration-300 ${
+                  plan.popular
+                    ? 'border-purple-500/50 hover:border-purple-400 shadow-xl shadow-purple-500/5 hover:translate-y-[-4px]'
+                    : 'border-white/10 hover:border-white/20 hover:translate-y-[-4px]'
+                }`}
+              >
+                {plan.popular && (
+                  <span className="absolute top-0 right-8 -translate-y-1/2 bg-gradient-to-r from-purple-600 to-blue-600 text-white font-mono text-[9px] font-bold tracking-widest uppercase px-3 py-1 rounded-full border border-purple-400/25">
+                    Most Popular
                   </span>
-                  {typeof plan.price === 'number' && (
-                    <span className="text-xs text-gray-400 font-mono ml-1">/{plan.period}</span>
-                  )}
-                  {typeof plan.price !== 'number' && (
-                    <span className="text-xs text-gray-400 font-sans block mt-1">{plan.period}</span>
-                  )}
+                )}
+
+                <div className="space-y-6">
+                  {/* Plan Header */}
+                  <div className="space-y-3">
+                    <div className="w-10 h-10 rounded-xl bg-[#0a0a0a] border border-white/10 flex items-center justify-center text-blue-400">
+                      {getIconWithColor(plan.icon)}
+                    </div>
+                    <h3 className="text-lg font-display font-bold text-white tracking-wide">
+                      {plan.name}
+                    </h3>
+                    <p className="text-[11px] text-gray-400 font-sans leading-relaxed">
+                      {plan.tagline}
+                    </p>
+                  </div>
+
+                  {/* Price */}
+                  <div className="py-2">
+                    <span className="text-3xl font-display font-bold text-white tracking-tight font-mono">
+                      {typeof plan.price === 'number' ? `₹${plan.price.toLocaleString('en-IN')}` : plan.price}
+                    </span>
+                    {typeof plan.price === 'number' && (
+                      <span className="text-xs text-gray-400 font-mono ml-1">/{plan.period}</span>
+                    )}
+                    {typeof plan.price !== 'number' && (
+                      <span className="text-xs text-gray-400 font-sans block mt-1">{plan.period}</span>
+                    )}
+                  </div>
+
+                  {/* Features List */}
+                  <ul className="space-y-3 pt-6 border-t border-white/10 text-xs text-gray-300 font-sans">
+                    {Array.isArray(plan.features) && plan.features.map((feat, i) => (
+                      <li key={i} className="flex items-start space-x-2.5">
+                        <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                        <span className="leading-relaxed">{feat}</span>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
 
-                {/* Features List */}
-                <ul className="space-y-3 pt-6 border-t border-white/10 text-xs text-gray-300 font-sans">
-                  {plan.features.map((feat, i) => (
-                    <li key={i} className="flex items-start space-x-2.5">
-                      <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                      <span className="leading-relaxed">{feat}</span>
-                    </li>
-                  ))}
-                </ul>
+                {/* Action Button */}
+                <div className="pt-8">
+                  <button
+                    id={`btn-select-plan-${plan.name.toLowerCase().replace(/\s+/g, '-')}`}
+                    onClick={() => handleSelectPlan(plan)}
+                    className={`w-full py-3.5 rounded-full text-xs font-semibold flex items-center justify-center space-x-2 transition-all cursor-pointer ${
+                      plan.popular
+                        ? 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white'
+                        : 'bg-white/5 border border-white/10 hover:bg-white/10 hover:border-blue-500/30 text-slate-300 hover:text-white'
+                    }`}
+                  >
+                    <span>Select {plan.name}</span>
+                    <ArrowUpRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
-
-              {/* Action Button */}
-              <div className="pt-8">
-                <button
-                  id={`btn-select-plan-${plan.name.toLowerCase().replace(' ', '-')}`}
-                  onClick={() => handleSelectPlan(plan)}
-                  className={`w-full py-3.5 rounded-full text-xs font-semibold flex items-center justify-center space-x-2 transition-all cursor-pointer ${
-                    plan.popular
-                      ? 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white'
-                      : 'bg-white/5 border border-white/10 hover:bg-white/10 hover:border-blue-500/30 text-slate-300 hover:text-white'
-                  }`}
-                >
-                  <span>Select {plan.name}</span>
-                  <ArrowUpRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-          ))}
-        </section>
+            ))}
+          </section>
+        )}
 
         {/* Razorpay Integration Modal Flow */}
         <AnimatePresence>
@@ -243,7 +311,7 @@ export default function Pricing() {
                 {checkoutStatus !== 'paying' && (
                   <button
                     onClick={() => setCheckoutStatus('idle')}
-                    className="absolute top-4 right-4 text-slate-400 hover:text-white p-1.5 rounded-full bg-white/5 border border-white/10 text-xs"
+                    className="absolute top-4 right-4 text-slate-400 hover:text-white p-1.5 rounded-full bg-white/5 border border-white/10 text-xs cursor-pointer"
                   >
                     Close
                   </button>
@@ -328,7 +396,7 @@ export default function Pricing() {
                       </p>
                       <p className="text-xs text-gray-400 font-mono leading-relaxed">
                         Initializing transaction ID: <br />
-                        <span className="text-purple-400">order_ref_{Math.random().toString(36).substring(7).toUpperCase()}</span>
+                        <span className="text-purple-400 font-semibold">order_ref_{Math.random().toString(36).substring(7).toUpperCase()}</span>
                       </p>
                     </div>
                     {/* Simulated payment box */}
@@ -339,7 +407,7 @@ export default function Pricing() {
                       </p>
                       <p>Company: DESHWAL WEB TECHNOLOGIES PVT LTD</p>
                       <p>Plan: {activePlan?.name}</p>
-                      <p className="text-white">Amount: ₹{activePlan?.price?.toLocaleString('en-IN')}</p>
+                      <p className="text-white">Amount: {typeof activePlan?.price === 'number' ? `₹${activePlan?.price?.toLocaleString('en-IN')}` : activePlan?.price}</p>
                     </div>
                   </div>
                 )}
@@ -364,7 +432,7 @@ export default function Pricing() {
                     </div>
                     <button
                       onClick={() => setCheckoutStatus('idle')}
-                      className="bg-blue-600 hover:bg-blue-500 text-white font-semibold px-6 py-2.5 rounded-full text-xs cursor-pointer"
+                      className="bg-blue-600 hover:bg-blue-500 text-white font-semibold px-6 py-2.5 rounded-full text-xs cursor-pointer transition-colors"
                     >
                       Return to Pricing
                     </button>

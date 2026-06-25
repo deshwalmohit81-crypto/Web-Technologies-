@@ -1,0 +1,185 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Reusable Helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isBootstrappedAdmin() {
+      return isSignedIn() && isEmailVerified() && request.auth.token.email == 'deshwal.mohit81@gmail.com';
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (isBootstrappedAdmin() || (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getUserData().role == 'admin'));
+    }
+
+    // Auth verification check (can check email verified if app strictly enforces it, but we'll use isEmailVerified as an optional helper)
+    function isVerifiedUser() {
+      return isSignedIn();
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Entity Validations
+    function isValidUser(data) {
+      return data.uid == request.auth.uid &&
+             data.email is string && data.email.size() <= 200 &&
+             (data.role == 'client' || (data.role == 'admin' && request.auth.token.email == 'deshwal.mohit81@gmail.com'));
+    }
+
+    function isValidBlog(data) {
+      return data.title is string && data.title.size() <= 200 &&
+             data.slug is string && data.slug.size() <= 200 &&
+             data.content is string && data.content.size() <= 50000 &&
+             data.category is string && data.category.size() <= 100 &&
+             data.author is string && data.author.size() <= 100;
+    }
+
+    function isValidPortfolio(data) {
+      return data.title is string && data.title.size() <= 200 &&
+             data.category is string && data.category.size() <= 100 &&
+             data.description is string && data.description.size() <= 10000 &&
+             data.client is string && data.client.size() <= 100;
+    }
+
+    function isValidLead(data) {
+      return data.name is string && data.name.size() <= 100 &&
+             data.email is string && data.email.size() <= 200 &&
+             data.phone is string && data.phone.size() <= 50 &&
+             data.service is string && data.service.size() <= 200;
+    }
+
+    function isValidNewsletter(data) {
+      return data.email is string && data.email.size() <= 200;
+    }
+
+    function isValidCareer(data) {
+      return data.title is string && data.title.size() <= 200 &&
+             data.department is string && data.department.size() <= 100 &&
+             data.location is string && data.location.size() <= 100 &&
+             data.type is string && data.type.size() <= 50 &&
+             data.description is string && data.description.size() <= 20000;
+    }
+
+    function isValidApplication(data) {
+      return data.jobId is string && data.jobId.size() <= 100 &&
+             data.jobTitle is string && data.jobTitle.size() <= 200 &&
+             data.name is string && data.name.size() <= 100 &&
+             data.email is string && data.email.size() <= 200 &&
+             data.phone is string && data.phone.size() <= 50 &&
+             data.coverLetter is string && data.coverLetter.size() <= 10000;
+    }
+
+    function isValidClientProject(data) {
+      return data.clientId is string && data.clientId.size() <= 128 &&
+             data.title is string && data.title.size() <= 200 &&
+             data.service is string && data.service.size() <= 100 &&
+             data.description is string && data.description.size() <= 10000;
+    }
+
+    function isValidClientTicket(data) {
+      return data.clientId is string && data.clientId.size() <= 128 &&
+             data.subject is string && data.subject.size() <= 200 &&
+             data.message is string && data.message.size() <= 10000;
+    }
+
+    // Rules matching
+    match /users/{userId} {
+      allow get: if isSignedIn() && (isOwner(userId) || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isSignedIn() && isOwner(userId) && isValidUser(incoming());
+      allow update: if isSignedIn() && isOwner(userId) && isValidUser(incoming()) && incoming().role == existing().role;
+      allow delete: if isAdmin();
+    }
+
+    match /blogs/{blogId} {
+      allow read: if true;
+      allow create, update: if isAdmin() && isValidBlog(incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /portfolios/{portfolioId} {
+      allow read: if true;
+      allow create, update: if isAdmin() && isValidPortfolio(incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /leads/{leadId} {
+      allow get: if isAdmin();
+      allow list: if isAdmin();
+      allow create: if isValidLead(incoming());
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /newsletter_subscribers/{subscriberId} {
+      allow get, list: if isAdmin();
+      allow create: if isValidNewsletter(incoming());
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /careers/{careerId} {
+      allow read: if true;
+      allow create, update: if isAdmin() && isValidCareer(incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /applications/{applicationId} {
+      allow get, list: if isAdmin();
+      allow create: if isValidApplication(incoming());
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /client_projects/{projectId} {
+      allow get: if isSignedIn() && (resource.data.clientId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.clientId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && incoming().clientId == request.auth.uid && isValidClientProject(incoming());
+      allow update: if isSignedIn() && (
+        (resource.data.clientId == request.auth.uid && incoming().clientId == request.auth.uid && isValidClientProject(incoming()) && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'service', 'budget', 'description'])) ||
+        isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /client_tickets/{ticketId} {
+      allow get: if isSignedIn() && (resource.data.clientId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.clientId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && incoming().clientId == request.auth.uid && isValidClientTicket(incoming());
+      allow update: if isSignedIn() && (
+        (resource.data.clientId == request.auth.uid && incoming().clientId == request.auth.uid && isValidClientTicket(incoming()) && incoming().diff(existing()).affectedKeys().hasOnly(['replies'])) ||
+        isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+  }
+}

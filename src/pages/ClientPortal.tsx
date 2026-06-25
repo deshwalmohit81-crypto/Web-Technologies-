@@ -18,6 +18,37 @@ export default function ClientPortal({ setTab }: ClientPortalProps) {
   const [token, setToken] = useState<string | null>(localStorage.getItem('client_token'));
   const [clientUser, setClientUser] = useState<any | null>(null);
 
+  // Forgot Password states
+  const [forgotPassword, setForgotPassword] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetSuccess, setResetSuccess] = useState<string | null>(null);
+  const [resetError, setResetError] = useState<string | null>(null);
+  const [isResetLoading, setIsResetLoading] = useState(false);
+
+  // Reset Password (Actual reset) states
+  const [urlResetToken, setUrlResetToken] = useState<string | null>(null);
+  const [urlEmail, setUrlEmail] = useState<string | null>(null);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [showResetForm, setShowResetForm] = useState(false);
+  const [actualResetSuccess, setActualResetSuccess] = useState<string | null>(null);
+  const [actualResetError, setActualResetError] = useState<string | null>(null);
+  const [isActualResetLoading, setIsActualResetLoading] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tokenParam = params.get('resetToken');
+    const emailParam = params.get('email');
+    if (tokenParam && emailParam) {
+      setUrlResetToken(tokenParam);
+      setUrlEmail(emailParam);
+      setShowResetForm(true);
+      // Clean query parameters from URL so they don't linger
+      const newUrl = window.location.pathname;
+      window.history.replaceState({}, document.title, newUrl);
+    }
+  }, []);
+
   // Form states
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -30,9 +61,10 @@ export default function ClientPortal({ setTab }: ClientPortalProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [authSuccess, setAuthSuccess] = useState<string | null>(null);
+  const [verificationLink, setVerificationLink] = useState<string | null>(null);
 
   // Portal Content states
-  const [activeSubTab, setActiveSubTab] = useState<'projects' | 'new-project' | 'support' | 'billing'>('projects');
+  const [activeSubTab, setActiveSubTab] = useState<'projects' | 'new-project' | 'support' | 'billing' | 'surveys'>('projects');
   const [projects, setProjects] = useState<ClientProject[]>([]);
   const [tickets, setTickets] = useState<ClientTicket[]>([]);
   const [selectedTicket, setSelectedTicket] = useState<ClientTicket | null>(null);
@@ -105,6 +137,7 @@ export default function ClientPortal({ setTab }: ClientPortalProps) {
     e.preventDefault();
     setAuthError(null);
     setAuthSuccess(null);
+    setVerificationLink(null);
 
     if (!email || !password) {
       setAuthError('Please fill in all required fields.');
@@ -139,6 +172,9 @@ export default function ClientPortal({ setTab }: ClientPortalProps) {
 
       if (!response.ok) {
         setAuthError(data.error || 'Authentication failed. Please try again.');
+        if (data.verificationLink) {
+          setVerificationLink(data.verificationLink);
+        }
         return;
       }
 
@@ -146,6 +182,9 @@ export default function ClientPortal({ setTab }: ClientPortalProps) {
       setToken(data.token);
       setClientUser(data.user);
       setAuthSuccess(isLogin ? 'Login successful! Welcome to your Workspace.' : 'Account created successfully!');
+      if (data.verificationLink) {
+        setVerificationLink(data.verificationLink);
+      }
       
       // Clear forms
       setEmail('');
@@ -158,6 +197,89 @@ export default function ClientPortal({ setTab }: ClientPortalProps) {
       setAuthError('Server is currently unreachable. Please check your network connection.');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleForgotPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setResetError(null);
+    setResetSuccess(null);
+
+    if (!resetEmail) {
+      setResetError('Please enter your email address.');
+      return;
+    }
+
+    try {
+      setIsResetLoading(true);
+      const res = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: resetEmail, role: 'client' })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to send reset email.');
+      }
+      setResetSuccess('A secure password reset link has been sent to your email. Please check your inbox (and simulated emails at /api/simulated-emails if using dev mock mode).');
+    } catch (err: any) {
+      console.error('Password reset error:', err);
+      setResetError(err.message || 'Failed to send reset email. Please verify the email is registered.');
+    } finally {
+      setIsResetLoading(false);
+    }
+  };
+
+  const handleActualResetPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setActualResetError(null);
+    setActualResetSuccess(null);
+
+    if (!newPassword || !confirmNewPassword) {
+      setActualResetError('Please fill out all fields.');
+      return;
+    }
+
+    if (newPassword !== confirmNewPassword) {
+      setActualResetError('Passwords do not match.');
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      setActualResetError('Password must be at least 6 characters.');
+      return;
+    }
+
+    try {
+      setIsActualResetLoading(true);
+      const res = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: urlEmail,
+          token: urlResetToken,
+          newPassword,
+          role: 'client'
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to reset password.');
+      }
+      setActualResetSuccess('Your password has been successfully reset! Redirecting to login...');
+      setTimeout(() => {
+        setShowResetForm(false);
+        setIsLogin(true);
+        setForgotPassword(false);
+        // Clear forms
+        setNewPassword('');
+        setConfirmNewPassword('');
+      }, 3000);
+    } catch (err: any) {
+      console.error('Password reset error:', err);
+      setActualResetError(err.message || 'Failed to reset password. The link may have expired.');
+    } finally {
+      setIsActualResetLoading(false);
     }
   };
 
@@ -320,200 +442,428 @@ export default function ClientPortal({ setTab }: ClientPortalProps) {
             animate={{ opacity: 1, y: 0 }}
             className="bg-white/5 border border-white/10 rounded-3xl p-8 backdrop-blur-md shadow-2xl space-y-6"
           >
-            {/* Branding Header */}
-            <div className="text-center space-y-3">
-              <Logo showText={true} iconSize={48} className="justify-center" />
-              <div className="space-y-1">
-                <h1 className="text-2xl font-display font-extrabold text-white tracking-tight">
-                  {isLogin ? 'Client Work Center' : 'Create Client Account'}
-                </h1>
-                <p className="text-xs text-slate-400 font-sans">
-                  {isLogin 
-                    ? 'Access your software projects, support desk, and documents.' 
-                    : 'Sign up to kick off new agile engineering pipelines.'}
-                </p>
-              </div>
-            </div>
-
-            {/* Success & Error Badges */}
-            <AnimatePresence mode="wait">
-              {authError && (
-                <motion.div 
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-xs"
-                >
-                  <AlertTriangle className="w-4 h-4 shrink-0" />
-                  <span>{authError}</span>
-                </motion.div>
-              )}
-              {authSuccess && (
-                <motion.div 
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="flex items-center gap-2 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400 text-xs"
-                >
-                  <CheckCircle className="w-4 h-4 shrink-0" />
-                  <span>{authSuccess}</span>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* Main Auth Form */}
-            <form onSubmit={handleAuthSubmit} className="space-y-4">
-              {/* Name Fields for Sign Up */}
-              {!isLogin && (
-                <motion.div 
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  className="space-y-4"
-                >
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-                      Full Name *
-                    </label>
-                    <div className="relative">
-                      <User className="absolute left-3 top-3.5 w-4 h-4 text-slate-400" />
-                      <input
-                        type="text"
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        placeholder="John Doe"
-                        className="w-full bg-[#0a0a14] border border-white/10 rounded-xl py-3 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-sans"
-                        required={!isLogin}
-                      />
-                    </div>
+            {showResetForm ? (
+              /* Set New Password Form */
+              <div className="space-y-6">
+                <div className="text-center space-y-3">
+                  <Logo showText={true} iconSize={48} className="justify-center" />
+                  <div className="space-y-1">
+                    <h1 className="text-2xl font-display font-extrabold text-white tracking-tight">
+                      New Password
+                    </h1>
+                    <p className="text-xs text-slate-400 font-sans">
+                      Set a secure new password for account {urlEmail}.
+                    </p>
                   </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-                      Company Name
-                    </label>
-                    <div className="relative">
-                      <Building className="absolute left-3 top-3.5 w-4 h-4 text-slate-400" />
-                      <input
-                        type="text"
-                        value={companyName}
-                        onChange={(e) => setCompanyName(e.target.value)}
-                        placeholder="Acme Corp"
-                        className="w-full bg-[#0a0a14] border border-white/10 rounded-xl py-3 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-sans"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-                      Phone Number *
-                    </label>
-                    <div className="relative">
-                      <Phone className="absolute left-3 top-3.5 w-4 h-4 text-slate-400" />
-                      <input
-                        type="tel"
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
-                        placeholder="+91 99999 99999"
-                        className="w-full bg-[#0a0a14] border border-white/10 rounded-xl py-3 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-sans"
-                        required={!isLogin}
-                      />
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-
-              {/* Email Input */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-                  Email Address *
-                </label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-3.5 w-4 h-4 text-slate-400" />
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="name@company.com"
-                    className="w-full bg-[#0a0a14] border border-white/10 rounded-xl py-3 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-sans"
-                    required
-                  />
                 </div>
-              </div>
 
-              {/* Password Input */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-                  Password *
-                </label>
-                <div className="relative">
-                  <Key className="absolute left-3 top-3.5 w-4 h-4 text-slate-400" />
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••"
-                    className="w-full bg-[#0a0a14] border border-white/10 rounded-xl py-3 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-sans"
-                    required
-                  />
-                </div>
-              </div>
+                <AnimatePresence mode="wait">
+                  {actualResetError && (
+                    <motion.div 
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-xs"
+                    >
+                      <AlertTriangle className="w-4 h-4 shrink-0" />
+                      <span>{actualResetError}</span>
+                    </motion.div>
+                  )}
+                  {actualResetSuccess && (
+                    <motion.div 
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="flex items-center gap-2 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400 text-xs"
+                    >
+                      <CheckCircle className="w-4 h-4 shrink-0" />
+                      <span>{actualResetSuccess}</span>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
 
-              {/* Confirm Password for Sign Up */}
-              {!isLogin && (
-                <motion.div 
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                >
-                  <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-                    Confirm Password *
-                  </label>
-                  <div className="relative">
-                    <Key className="absolute left-3 top-3.5 w-4 h-4 text-slate-400" />
-                    <input
-                      type="password"
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      placeholder="••••••••"
-                      className="w-full bg-[#0a0a14] border border-white/10 rounded-xl py-3 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-sans"
-                      required={!isLogin}
-                    />
+                <form onSubmit={handleActualResetPasswordSubmit} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                      New Password *
+                    </label>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-3.5 w-4 h-4 text-slate-400" />
+                      <input
+                        type="password"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        placeholder="••••••••"
+                        className="w-full bg-[#0a0a14] border border-white/10 rounded-xl py-3 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-sans"
+                        required
+                      />
+                    </div>
                   </div>
-                </motion.div>
-              )}
 
-              {/* Submit Button */}
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl py-3.5 font-semibold text-sm tracking-wide shadow-lg shadow-blue-500/20 active:scale-[0.98] transition-all flex items-center justify-center space-x-2 mt-2"
-              >
-                {isLoading ? (
-                  <Loader2 className="w-4 h-4 animate-spin text-white" />
-                ) : (
-                  <>
-                    <span>{isLogin ? 'Enter Workspace' : 'Submit Credentials'}</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </>
-                )}
-              </button>
-            </form>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                      Confirm New Password *
+                    </label>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-3.5 w-4 h-4 text-slate-400" />
+                      <input
+                        type="password"
+                        value={confirmNewPassword}
+                        onChange={(e) => setConfirmNewPassword(e.target.value)}
+                        placeholder="••••••••"
+                        className="w-full bg-[#0a0a14] border border-white/10 rounded-xl py-3 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-sans"
+                        required
+                      />
+                    </div>
+                  </div>
 
-            {/* Toggle Mode Footer */}
-            <div className="border-t border-white/5 pt-4 text-center">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsLogin(!isLogin);
-                  setAuthError(null);
-                  setAuthSuccess(null);
-                }}
-                className="text-xs text-blue-400 hover:text-blue-300 transition-colors font-sans"
-              >
-                {isLogin 
-                  ? "Don't have a workspace? Request Account Access" 
-                  : 'Already registered? Log in with credentials'}
-              </button>
-            </div>
+                  <button
+                    type="submit"
+                    disabled={isActualResetLoading}
+                    className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl py-3.5 font-semibold text-sm tracking-wide shadow-lg shadow-blue-500/20 active:scale-[0.98] transition-all flex items-center justify-center space-x-2"
+                  >
+                    {isActualResetLoading ? (
+                      <Loader2 className="w-4 h-4 animate-spin text-white" />
+                    ) : (
+                      <>
+                        <span>Reset Password</span>
+                        <Key className="w-4 h-4" />
+                      </>
+                    )}
+                  </button>
+
+                  <div className="border-t border-white/5 pt-4 text-center">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowResetForm(false);
+                        setIsLogin(true);
+                      }}
+                      className="text-xs text-blue-400 hover:text-blue-300 transition-colors font-sans"
+                    >
+                      Back to Secure Login
+                    </button>
+                  </div>
+                </form>
+              </div>
+            ) : forgotPassword ? (
+              /* Forgot Password Form */
+              <div className="space-y-6">
+                <div className="text-center space-y-3">
+                  <Logo showText={true} iconSize={48} className="justify-center" />
+                  <div className="space-y-1">
+                    <h1 className="text-2xl font-display font-extrabold text-white tracking-tight">
+                      Reset Password
+                    </h1>
+                    <p className="text-xs text-slate-400 font-sans">
+                      Enter your registered email address and we'll send you a secure reset link.
+                    </p>
+                  </div>
+                </div>
+
+                <AnimatePresence mode="wait">
+                  {resetError && (
+                    <motion.div 
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-xs"
+                    >
+                      <AlertTriangle className="w-4 h-4 shrink-0" />
+                      <span>{resetError}</span>
+                    </motion.div>
+                  )}
+                  {resetSuccess && (
+                    <motion.div 
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="flex items-center gap-2 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400 text-xs"
+                    >
+                      <CheckCircle className="w-4 h-4 shrink-0" />
+                      <span>{resetSuccess}</span>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                <form onSubmit={handleForgotPasswordSubmit} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                      Email Address *
+                    </label>
+                    <div className="relative">
+                      <Mail className="absolute left-3 top-3.5 w-4 h-4 text-slate-400" />
+                      <input
+                        type="email"
+                        value={resetEmail}
+                        onChange={(e) => setResetEmail(e.target.value)}
+                        placeholder="name@company.com"
+                        className="w-full bg-[#0a0a14] border border-white/10 rounded-xl py-3 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-sans"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={isResetLoading}
+                    className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl py-3.5 font-semibold text-sm tracking-wide shadow-lg shadow-blue-500/20 active:scale-[0.98] transition-all flex items-center justify-center space-x-2"
+                  >
+                    {isResetLoading ? (
+                      <Loader2 className="w-4 h-4 animate-spin text-white" />
+                    ) : (
+                      <>
+                        <span>Send Reset Link</span>
+                        <Send className="w-4 h-4" />
+                      </>
+                    )}
+                  </button>
+
+                  <div className="border-t border-white/5 pt-4 text-center">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setForgotPassword(false);
+                        setResetError(null);
+                        setResetSuccess(null);
+                      }}
+                      className="text-xs text-blue-400 hover:text-blue-300 transition-colors font-sans"
+                    >
+                      Back to Secure Login
+                    </button>
+                  </div>
+                </form>
+              </div>
+            ) : (
+              /* Standard login / signup form */
+              <>
+                {/* Branding Header */}
+                <div className="text-center space-y-3">
+                  <Logo showText={true} iconSize={48} className="justify-center" />
+                  <div className="space-y-1">
+                    <h1 className="text-2xl font-display font-extrabold text-white tracking-tight">
+                      {isLogin ? 'Client Work Center' : 'Create Client Account'}
+                    </h1>
+                    <p className="text-xs text-slate-400 font-sans">
+                      {isLogin 
+                        ? 'Access your software projects, support desk, and documents.' 
+                        : 'Sign up to kick off new agile engineering pipelines.'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Success & Error Badges */}
+                <AnimatePresence mode="wait">
+                  {authError && (
+                    <motion.div 
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="flex flex-col gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-xs"
+                    >
+                      <div className="flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 shrink-0" />
+                        <span>{authError}</span>
+                      </div>
+                      {verificationLink && (
+                        <div className="mt-1 pt-1.5 border-t border-red-500/10 flex flex-col gap-1 align-left text-left">
+                          <p className="text-[10px] text-slate-400 uppercase tracking-wider font-mono">Developer Sandbox Tools:</p>
+                          <a 
+                            href={verificationLink} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-lg text-[10px] transition-colors self-start"
+                          >
+                            Verify Email via Firebase Auth Link
+                          </a>
+                        </div>
+                      )}
+                    </motion.div>
+                  )}
+                  {authSuccess && (
+                    <motion.div 
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="flex items-center gap-2 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400 text-xs"
+                    >
+                      <CheckCircle className="w-4 h-4 shrink-0" />
+                      <span>{authSuccess}</span>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* Main Auth Form */}
+                <form onSubmit={handleAuthSubmit} className="space-y-4">
+                  {/* Name Fields for Sign Up */}
+                  {!isLogin && (
+                    <motion.div 
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      className="space-y-4"
+                    >
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                          Full Name *
+                        </label>
+                        <div className="relative">
+                          <User className="absolute left-3 top-3.5 w-4 h-4 text-slate-400" />
+                          <input
+                            type="text"
+                            value={name}
+                            onChange={(e) => setName(e.target.value)}
+                            placeholder="John Doe"
+                            className="w-full bg-[#0a0a14] border border-white/10 rounded-xl py-3 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-sans"
+                            required={!isLogin}
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                          Company Name
+                        </label>
+                        <div className="relative">
+                          <Building className="absolute left-3 top-3.5 w-4 h-4 text-slate-400" />
+                          <input
+                            type="text"
+                            value={companyName}
+                            onChange={(e) => setCompanyName(e.target.value)}
+                            placeholder="Acme Corp"
+                            className="w-full bg-[#0a0a14] border border-white/10 rounded-xl py-3 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-sans"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                          Phone Number *
+                        </label>
+                        <div className="relative">
+                          <Phone className="absolute left-3 top-3.5 w-4 h-4 text-slate-400" />
+                          <input
+                            type="tel"
+                            value={phone}
+                            onChange={(e) => setPhone(e.target.value)}
+                            placeholder="+91 99999 99999"
+                            className="w-full bg-[#0a0a14] border border-white/10 rounded-xl py-3 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-sans"
+                            required={!isLogin}
+                          />
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {/* Email Input */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                      Email Address *
+                    </label>
+                    <div className="relative">
+                      <Mail className="absolute left-3 top-3.5 w-4 h-4 text-slate-400" />
+                      <input
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="name@company.com"
+                        className="w-full bg-[#0a0a14] border border-white/10 rounded-xl py-3 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-sans"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  {/* Password Input */}
+                  <div>
+                    <div className="flex justify-between items-center mb-2">
+                      <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                        Password *
+                      </label>
+                      {isLogin && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setForgotPassword(true);
+                            setResetEmail(email);
+                            setResetError(null);
+                            setResetSuccess(null);
+                          }}
+                          className="text-xs text-blue-400 hover:text-blue-300 transition-colors font-sans text-right"
+                        >
+                          Forgot Password?
+                        </button>
+                      )}
+                    </div>
+                    <div className="relative">
+                      <Key className="absolute left-3 top-3.5 w-4 h-4 text-slate-400" />
+                      <input
+                        type="password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="••••••••"
+                        className="w-full bg-[#0a0a14] border border-white/10 rounded-xl py-3 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-sans"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  {/* Confirm Password for Sign Up */}
+                  {!isLogin && (
+                    <motion.div 
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                    >
+                      <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                        Confirm Password *
+                      </label>
+                      <div className="relative">
+                        <Key className="absolute left-3 top-3.5 w-4 h-4 text-slate-400" />
+                        <input
+                          type="password"
+                          value={confirmPassword}
+                          onChange={(e) => setConfirmPassword(e.target.value)}
+                          placeholder="••••••••"
+                          className="w-full bg-[#0a0a14] border border-white/10 rounded-xl py-3 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-sans"
+                          required={!isLogin}
+                        />
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {/* Submit Button */}
+                  <button
+                    type="submit"
+                    disabled={isLoading}
+                    className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl py-3.5 font-semibold text-sm tracking-wide shadow-lg shadow-blue-500/20 active:scale-[0.98] transition-all flex items-center justify-center space-x-2 mt-2"
+                  >
+                    {isLoading ? (
+                      <Loader2 className="w-4 h-4 animate-spin text-white" />
+                    ) : (
+                      <>
+                        <span>{isLogin ? 'Enter Workspace' : 'Submit Credentials'}</span>
+                        <ArrowRight className="w-4 h-4" />
+                      </>
+                    )}
+                  </button>
+                </form>
+
+                {/* Toggle Mode Footer */}
+                <div className="border-t border-white/5 pt-4 text-center">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsLogin(!isLogin);
+                      setAuthError(null);
+                      setAuthSuccess(null);
+                    }}
+                    className="text-xs text-blue-400 hover:text-blue-300 transition-colors font-sans"
+                  >
+                    {isLogin 
+                      ? "Don't have a workspace? Request Account Access" 
+                      : 'Already registered? Log in with credentials'}
+                  </button>
+                </div>
+              </>
+            )}
           </motion.div>
 
           {/* Quick Demo Credentials Help */}
@@ -613,6 +963,18 @@ export default function ClientPortal({ setTab }: ClientPortalProps) {
                 >
                   <FileText className="w-4 h-4" />
                   <span>Billing & Invoices</span>
+                </button>
+
+                <button
+                  onClick={() => { setActiveSubTab('surveys'); setSelectedTicket(null); }}
+                  className={`w-full flex items-center space-x-3 px-4 py-3 rounded-2xl text-xs font-semibold tracking-wide font-sans transition-all ${
+                    activeSubTab === 'surveys' 
+                      ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/15' 
+                      : 'text-slate-400 hover:text-white hover:bg-white/5'
+                  }`}
+                >
+                  <FileText className="w-4 h-4" />
+                  <span>Surveys & Feedback</span>
                 </button>
               </div>
 
@@ -1144,6 +1506,92 @@ export default function ClientPortal({ setTab }: ClientPortalProps) {
                           </div>
                         </div>
 
+                      </div>
+                    )}
+
+                    {/* SURVEYS & FEEDBACK PANEL */}
+                    {activeSubTab === 'surveys' && (
+                      <div className="bg-white/5 border border-white/10 rounded-3xl p-6 backdrop-blur-md space-y-6 text-left">
+                        <div className="space-y-1">
+                          <h2 className="text-lg font-display font-extrabold text-white">
+                            Assigned Questionnaires & Feedback
+                          </h2>
+                          <p className="text-xs text-slate-400 font-sans">
+                            Complete official onboarding feedback forms and requirement questionnaires hosted on secure Google Forms.
+                          </p>
+                        </div>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                          {/* List of Active Forms */}
+                          <div className="lg:col-span-1 space-y-3">
+                            <h3 className="text-xs font-mono text-slate-500 uppercase tracking-widest pb-1 border-b border-white/5">
+                              Available Forms
+                            </h3>
+
+                            {[
+                              {
+                                title: 'SLA Quality Survey',
+                                duration: '2 mins',
+                                desc: 'Help us grade your support response and delivery times.',
+                              },
+                              {
+                                title: 'Client Onboarding Intake',
+                                duration: '5 mins',
+                                desc: 'Share project specifications and technical server configurations.',
+                              },
+                              {
+                                title: 'Website Requirements Form',
+                                duration: '4 mins',
+                                desc: 'State design aesthetic preferences and asset requirements.',
+                              }
+                            ].map((form, fIdx) => (
+                              <button
+                                key={fIdx}
+                                onClick={() => alert('Secure Embedded Google Form: Complete the form on the canvas pane.')}
+                                className="w-full text-left p-4 rounded-2xl bg-[#030014]/40 border border-white/5 hover:border-blue-500/30 transition-all text-xs space-y-1 block"
+                              >
+                                <div className="flex justify-between items-center">
+                                  <span className="font-extrabold text-white">{form.title}</span>
+                                  <span className="text-[9px] font-mono text-blue-400 bg-blue-500/10 border border-blue-500/20 px-1.5 py-0.5 rounded">
+                                    {form.duration}
+                                  </span>
+                                </div>
+                                <p className="text-[11px] text-slate-400 leading-relaxed pt-1">
+                                  {form.desc}
+                                </p>
+                              </button>
+                            ))}
+                          </div>
+
+                          {/* Direct embedded iframe panel */}
+                          <div className="lg:col-span-2 space-y-4">
+                            <div className="bg-[#030014]/55 border border-white/10 rounded-2xl p-4 flex justify-between items-center">
+                              <div className="space-y-0.5">
+                                <h4 className="text-xs font-bold text-white">Secure Google Form Canvas</h4>
+                                <p className="text-[10px] text-slate-500">Renders live interactive responders inside sandboxed frame</p>
+                              </div>
+                              <a
+                                href="https://docs.google.com/forms"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-[11px] font-semibold text-blue-400 hover:underline flex items-center gap-1"
+                              >
+                                <span>Open Forms portal</span>
+                                <FileText className="w-3.5 h-3.5" />
+                              </a>
+                            </div>
+
+                            <div className="relative h-[480px] rounded-3xl overflow-hidden border border-white/10 shadow-2xl bg-[#030014]">
+                              <iframe
+                                src="https://docs.google.com/forms/d/e/1FAIpQLSf6gT698nSIs28-hX4Z_YFmD4r2Z6p58mX8hN29pS18Z7798w/viewform?embedded=true"
+                                className="absolute inset-0 w-full h-full border-0"
+                                title="Onboarding Google Form"
+                              >
+                                Loading…
+                              </iframe>
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     )}
                   </>

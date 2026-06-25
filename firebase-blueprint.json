@@ -1,0 +1,187 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Represents an authenticated user (client or admin)",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "name": { "type": "string" },
+        "role": { "type": "string", "enum": ["client", "admin", "editor"] },
+        "companyName": { "type": "string" },
+        "phone": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Blog": {
+      "title": "Blog",
+      "description": "A corporate blog post",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "slug": { "type": "string" },
+        "excerpt": { "type": "string" },
+        "content": { "type": "string" },
+        "category": { "type": "string" },
+        "author": { "type": "string" },
+        "image": { "type": "string" },
+        "readTime": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "slug", "content", "category", "author"]
+    },
+    "Portfolio": {
+      "title": "Portfolio",
+      "description": "A case study portfolio item",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "category": { "type": "string" },
+        "description": { "type": "string" },
+        "image": { "type": "string" },
+        "tags": { "type": "array" },
+        "client": { "type": "string" },
+        "website": { "type": "string" },
+        "challenge": { "type": "string" },
+        "solution": { "type": "string" },
+        "results": { "type": "string" },
+        "completionDate": { "type": "string" },
+        "featured": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "category", "description", "client"]
+    },
+    "Lead": {
+      "title": "Lead",
+      "description": "A sales or contact lead",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "phone": { "type": "string" },
+        "service": { "type": "string" },
+        "plan": { "type": "string" },
+        "message": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "contacting", "completed"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "email", "phone", "service"]
+    },
+    "NewsletterSubscriber": {
+      "title": "NewsletterSubscriber",
+      "description": "A subscriber to the company newsletter",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "format": "email" },
+        "subscribedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email"]
+    },
+    "Career": {
+      "title": "Career",
+      "description": "A job opening listing",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "department": { "type": "string" },
+        "location": { "type": "string" },
+        "type": { "type": "string" },
+        "experience": { "type": "string" },
+        "salary": { "type": "string" },
+        "description": { "type": "string" },
+        "requirements": { "type": "array" },
+        "responsibilities": { "type": "array" },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "department", "location", "type", "description"]
+    },
+    "Application": {
+      "title": "Application",
+      "description": "A job application",
+      "type": "object",
+      "properties": {
+        "jobId": { "type": "string" },
+        "jobTitle": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "phone": { "type": "string" },
+        "resumeUrl": { "type": "string" },
+        "coverLetter": { "type": "string" },
+        "portfolioUrl": { "type": "string" },
+        "status": { "type": "string", "enum": ["applied", "reviewing", "interviewed", "rejected", "accepted"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["jobId", "jobTitle", "name", "email", "phone", "coverLetter"]
+    },
+    "ClientProject": {
+      "title": "ClientProject",
+      "description": "A project requested by or assigned to a client",
+      "type": "object",
+      "properties": {
+        "clientId": { "type": "string" },
+        "title": { "type": "string" },
+        "service": { "type": "string" },
+        "budget": { "type": "string" },
+        "description": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending_review", "proposal_sent", "in_development", "testing", "delivered"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["clientId", "title", "service", "description"]
+    },
+    "ClientTicket": {
+      "title": "ClientTicket",
+      "description": "A support ticket created by a client",
+      "type": "object",
+      "properties": {
+        "clientId": { "type": "string" },
+        "subject": { "type": "string" },
+        "message": { "type": "string" },
+        "status": { "type": "string", "enum": ["open", "in_progress", "resolved"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "replies": { "type": "array" }
+      },
+      "required": ["clientId", "subject", "message"]
+    }
+  },
+  "firestore": {
+    "users": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Collection of all user accounts and roles"
+    },
+    "blogs": {
+      "schema": { "$ref": "#/entities/Blog" },
+      "description": "Collection of company blog posts"
+    },
+    "portfolios": {
+      "schema": { "$ref": "#/entities/Portfolio" },
+      "description": "Collection of portfolio case studies"
+    },
+    "leads": {
+      "schema": { "$ref": "#/entities/Lead" },
+      "description": "Collection of sales and inquiry leads"
+    },
+    "newsletter_subscribers": {
+      "schema": { "$ref": "#/entities/NewsletterSubscriber" },
+      "description": "Collection of newsletter subscriptions"
+    },
+    "careers": {
+      "schema": { "$ref": "#/entities/Career" },
+      "description": "Collection of open positions / career listings"
+    },
+    "applications": {
+      "schema": { "$ref": "#/entities/Application" },
+      "description": "Collection of job application submissions"
+    },
+    "client_projects": {
+      "schema": { "$ref": "#/entities/ClientProject" },
+      "description": "Collection of client digital transformation projects"
+    },
+    "client_tickets": {
+      "schema": { "$ref": "#/entities/ClientTicket" },
+      "description": "Collection of client support tickets and replies"
+    }
+  }
+}

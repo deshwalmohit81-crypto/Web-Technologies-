@@ -129,3 +129,23 @@ export interface DashboardStats {
   leadsByService: { service: string; count: number }[];
   leadsOverTime: { date: string; count: number }[];
 }
+
+export interface Service {
+  id: string;
+  icon: string;
+  title: string;
+  desc: string;
+  deliverables: string[];
+}
+
+export interface PricingPlan {
+  id: string;
+  name: string;
+  price: number | string;
+  period: string;
+  tagline: string;
+  icon: string;
+  features: string[];
+  popular: boolean;
+}
+

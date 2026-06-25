@@ -710,3 +710,121 @@ Action Required: Please evaluate this candidate's profile on the Admin Console a
     text: adminText
   });
 }
+
+/**
+ * Sends a password reset email to client or admin
+ */
+export async function sendPasswordResetEmail(
+  to: string,
+  name: string,
+  resetLink: string,
+  role: 'client' | 'admin'
+): Promise<boolean> {
+  const subject = `Reset Your Password - ${COMPANY_NAME}`;
+  const html = wrapHtmlTemplate(
+    'Password Reset Request',
+    `
+      <h2>Hello ${name},</h2>
+      <p>A request was received to reset the secure login credentials associated with your <strong>${role === 'admin' ? 'Administrator' : 'Client'} Account</strong> at ${COMPANY_NAME}.</p>
+      <p>If you did not request a password reset, you can safely ignore this email. Your password will remain unchanged.</p>
+      
+      <p style="text-align: center; margin: 32px 0;">
+        <a href="${resetLink}" class="button" style="background-color: ${ACCENT_COLOR}; color: #ffffff !important; display: inline-block; padding: 14px 28px; border-radius: 30px; text-decoration: none; font-weight: 600; font-size: 14px;">Reset My Password</a>
+      </p>
+
+      <p style="font-size: 12px; color: #64748b; line-height: 1.5; margin-top: 24px;">
+        For security reasons, this secure reset link will expire in <strong>1 hour</strong>.
+      </p>
+      
+      <p style="font-size: 11px; color: #94a3b8; line-height: 1.5;">
+        If you are having trouble clicking the button, copy and paste the following URL into your web browser:<br>
+        <a href="${resetLink}" style="color: ${ACCENT_COLOR}; word-break: break-all;">${resetLink}</a>
+      </p>
+
+      <p>Best regards,<br><strong>Secure Authentication Desk</strong><br>${COMPANY_NAME}</p>
+    `
+  );
+
+  const text = `
+🔒 PASSWORD RESET REQUEST
+-------------------------
+Hello ${name},
+
+A request was received to reset your password for your ${role === 'admin' ? 'Administrator' : 'Client'} Account at ${COMPANY_NAME}.
+
+Please use the following secure link to reset your password. This link is active for 1 hour:
+${resetLink}
+
+If you did not request this, you can safely ignore this email.
+
+Best regards,
+Secure Authentication Desk
+${COMPANY_NAME}
+  `.trim();
+
+  return await sendMail({
+    to,
+    subject,
+    html,
+    text
+  });
+}
+
+/**
+ * Sends an email verification link to client or admin using Firebase Auth generated link
+ */
+export async function sendEmailVerificationEmail(
+  to: string,
+  name: string,
+  verificationLink: string,
+  role: 'client' | 'admin'
+): Promise<boolean> {
+  const subject = `Verify Your Email Address - ${COMPANY_NAME}`;
+  const html = wrapHtmlTemplate(
+    'Verify Your Account',
+    `
+      <h2>Hello ${name},</h2>
+      <p>Thank you for signing up for a <strong>${role === 'admin' ? 'Administrator' : 'Client'} Account</strong> at ${COMPANY_NAME}.</p>
+      <p>To finalize your registration and secure your account, please verify your email address using Firebase Auth:</p>
+      
+      <p style="text-align: center; margin: 32px 0;">
+        <a href="${verificationLink}" class="button" style="background-color: ${ACCENT_COLOR}; color: #ffffff !important; display: inline-block; padding: 14px 28px; border-radius: 30px; text-decoration: none; font-weight: 600; font-size: 14px;">Verify Email Address</a>
+      </p>
+
+      <p style="font-size: 12px; color: #64748b; line-height: 1.5; margin-top: 24px;">
+        Once verified, you will be able to log in to the secure workspace portal.
+      </p>
+      
+      <p style="font-size: 11px; color: #94a3b8; line-height: 1.5;">
+        If you are having trouble clicking the button, copy and paste the following URL into your web browser:<br>
+        <a href="${verificationLink}" style="color: ${ACCENT_COLOR}; word-break: break-all;">${verificationLink}</a>
+      </p>
+
+      <p>Best regards,<br><strong>Secure Authentication Desk</strong><br>${COMPANY_NAME}</p>
+    `
+  );
+
+  const text = `
+📧 VERIFY YOUR EMAIL ADDRESS
+----------------------------
+Hello ${name},
+
+Thank you for signing up for a ${role === 'admin' ? 'Administrator' : 'Client'} Account at ${COMPANY_NAME}.
+
+Please use the following Firebase Auth link to verify your email address and secure your account:
+${verificationLink}
+
+Once verified, you will be able to log in to the secure workspace portal.
+
+Best regards,
+Secure Authentication Desk
+${COMPANY_NAME}
+  `.trim();
+
+  return await sendMail({
+    to,
+    subject,
+    html,
+    text
+  });
+}

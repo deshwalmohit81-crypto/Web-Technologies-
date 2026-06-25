@@ -1,12 +1,15 @@
 import fs from 'fs';
 import path from 'path';
 import bcrypt from 'bcryptjs';
-import { Blog, Portfolio, Lead, NewsletterSub, JobListing, JobApplication, AdminUser, ClientUser, ClientProject, ClientTicket } from '../types.js';
+import { Blog, Portfolio, Lead, NewsletterSub, JobListing, JobApplication, AdminUser, ClientUser, ClientProject, ClientTicket, Service, PricingPlan } from '../types.js';
 
 const DB_FILE = path.join(process.cwd(), 'db.json');
 
 interface DbClientUser extends ClientUser {
   passwordHash: string;
+  resetToken?: string;
+  resetTokenExpires?: string;
+  emailVerified?: boolean;
 }
 
 interface Schema {
@@ -16,10 +19,21 @@ interface Schema {
   newsletter: NewsletterSub[];
   careers: JobListing[];
   applications: JobApplication[];
-  admins: { id: string; username: string; email: string; passwordHash: string; role: 'admin' | 'editor' }[];
+  admins: { 
+    id: string; 
+    username: string; 
+    email: string; 
+    passwordHash: string; 
+    role: 'admin' | 'editor';
+    resetToken?: string;
+    resetTokenExpires?: string;
+    emailVerified?: boolean;
+  }[];
   clients: DbClientUser[];
   clientProjects: ClientProject[];
   clientTickets: ClientTicket[];
+  services: Service[];
+  pricingPlans: PricingPlan[];
 }
 
 const defaultDb: Schema = {
@@ -276,7 +290,152 @@ Our dedicated SEO team at Deshwal Web Technologies implements end-to-end optimiz
   admins: [], // Initialized dynamically in the constructor/loader
   clients: [],
   clientProjects: [],
-  clientTickets: []
+  clientTickets: [],
+  services: [
+    {
+      id: 'web-dev',
+      icon: 'Code',
+      title: 'Website Development',
+      desc: 'We engineer blazingly fast, modern websites using React 19, TypeScript, and Tailwind CSS. Fully responsive and optimized for the edge.',
+      deliverables: ['Custom SPA / Landing Pages', 'Server Components Optimization', 'Fluid Framer Motion Loops', 'Semantic HTML5 structure'],
+    },
+    {
+      id: 'ecommerce',
+      icon: 'ShoppingBag',
+      title: 'E-Commerce Development',
+      desc: 'Bespoke online retail platforms integrated with dynamic stock systems, advanced admin sales panels, and secure Razorpay gateway checkouts.',
+      deliverables: ['Razorpay payment checkouts', 'Granular Inventory Panels', 'One-Click Customer Checkout', 'Sales telemetry tracking'],
+    },
+    {
+      id: 'mobile-apps',
+      icon: 'Smartphone',
+      title: 'Mobile App Development',
+      desc: 'Native-feeling cross-platform iOS and Android apps crafted securely using React Native, fast state synch, and offline support.',
+      deliverables: ['Cross-platform mobile apps', 'Local SQLite Cache syncing', 'Firebase Push Notification hooks', 'Biometric login configs'],
+    },
+    {
+      id: 'software-dev',
+      icon: 'Laptop',
+      title: 'Software Development',
+      desc: 'Formulating robust corporate SaaS dashboards, custom cloud infrastructure, and backend Node.js APIs supporting secure compliance auditing.',
+      deliverables: ['JWT Authentication systems', 'Throttling security rules', 'Relational SQLite/MongoDB DBs', 'Custom telemetry widgets'],
+    },
+    {
+      id: 'ui-ux',
+      icon: 'Figma',
+      title: 'UI/UX Design',
+      desc: 'Transforming complex administrative workflows into beautiful, minimalist interactive layouts. Advanced Figma systems.',
+      deliverables: ['High-Fidelity Figma prototypes', 'Grid and Typography scales', 'Comprehensive User flow wireframes', 'Interactive hover mockups'],
+    },
+    {
+      id: 'seo',
+      icon: 'Search',
+      title: 'SEO Services',
+      desc: 'Aggressive technical optimization, schema markups, robotic indexing paths, and Sitemap creations to climb competitive search engine ranks.',
+      deliverables: ['JSON-LD structured schema', 'Dynamic robots & sitemap files', 'Google Search Console syncing', 'Keywords competition reports'],
+    },
+    {
+      id: 'digital-marketing',
+      icon: 'Megaphone',
+      title: 'Digital Marketing',
+      desc: 'Setting up automated customer funnels, social media advertisement integrations, and targeting campaigns to scale lead acquisition pipelines.',
+      deliverables: ['Targeted social campaign layouts', 'Email automation synchronization', 'Google Analytics dashboard tracking', 'Lead Capture optimization'],
+    },
+    {
+      id: 'graphic-design',
+      icon: 'Palette',
+      title: 'Graphic Designing',
+      desc: 'Premium vector branding graphics, corporate presentation layouts, custom logotypes, and digital media assets.',
+      deliverables: ['Custom branding scale systems', 'Social media graphic bundles', 'High-impact pitch presentations', 'Scalable SVG logo vectors'],
+    },
+    {
+      id: 'maintenance',
+      icon: 'Hammer',
+      title: 'Website Maintenance',
+      desc: 'Routine security patch deployments, database backups, package version updates, and visual component tuning.',
+      deliverables: ['Secure weekly server backups', 'Security audit evaluations', 'Page response-speed tuning', 'Asset optimization syncs'],
+    },
+    {
+      id: 'custom-solutions',
+      icon: 'Settings',
+      title: 'Custom Business Solutions',
+      desc: 'Highly customized business solutions, including centralized ERPs, payroll tracking tools, CRM suites, and pipeline automations.',
+      deliverables: ['Centralized SaaS ERP architectures', 'CRM automation modules', 'Granular employee permission matrices', 'Structured data logging'],
+    },
+  ],
+  pricingPlans: [
+    {
+      id: 'starter',
+      name: 'Starter Plan',
+      price: 4999,
+      period: 'One-time',
+      tagline: 'Best for small businesses',
+      icon: 'Zap',
+      features: [
+        'Basic Informational Website',
+        '5 Responsive Pages',
+        'Structured Contact Inquiry Form',
+        'Standard Tailwind UI layout',
+        'Free Domain Mapping (web.deshwal.in sub)',
+        '1 Month Post-Launch Support',
+      ],
+      popular: false,
+    },
+    {
+      id: 'business',
+      name: 'Business Plan',
+      price: 9999,
+      period: 'One-time',
+      tagline: 'Perfect for scaling ventures',
+      icon: 'Flame',
+      features: [
+        'Dynamic Custom Website',
+        'Self-Serve Administrative Panel',
+        'On-page SEO Technical Alignment',
+        'Google Search Console setup',
+        'Up to 15 Responsive Pages',
+        'Database persistent leads tracker',
+        '3 Months Post-Launch Support',
+      ],
+      popular: true,
+    },
+    {
+      id: 'professional',
+      name: 'Professional Plan',
+      price: 19999,
+      period: 'One-time',
+      tagline: 'Complete e-commerce capability',
+      icon: 'Award',
+      features: [
+        'High-speed E-Commerce Platform',
+        'Razorpay Payments gateway integration',
+        'Granular Inventory management',
+        'Interactive administrative sales charts',
+        'Custom corporate database models',
+        'Technical SEO Schema configurations',
+        '6 Months Dedicated Support',
+      ],
+      popular: false,
+    },
+    {
+      id: 'enterprise',
+      name: 'Enterprise Plan',
+      price: 'Custom',
+      period: 'Bespoke contract',
+      tagline: 'Bespoke corporate architecture',
+      icon: 'ShieldCheck',
+      features: [
+        'Custom ERP & CRM architectures',
+        'Bespoke Cloud Infrastructure (Cloud Run)',
+        'Highly compliant secure JWT access controls',
+        'Gemini AI chat solutions integrated',
+        'Dedicated Developer & Solution Architect',
+        '24/7 Reaction SLA guarantees',
+        'Infinite Scale & Continuous Backups',
+      ],
+      popular: false,
+    },
+  ]
 };
 
 class LocalDatabase {
@@ -295,6 +454,14 @@ class LocalDatabase {
         if (!this.db.clients) this.db.clients = [];
         if (!this.db.clientProjects) this.db.clientProjects = [];
         if (!this.db.clientTickets) this.db.clientTickets = [];
+        if (!this.db.services) {
+          this.db.services = [...defaultDb.services];
+          this.save();
+        }
+        if (!this.db.pricingPlans) {
+          this.db.pricingPlans = [...defaultDb.pricingPlans];
+          this.save();
+        }
       } else {
         // Initialize admin password dynamically
         const salt = bcrypt.genSaltSync(10);
@@ -625,6 +792,163 @@ class LocalDatabase {
       return ticket;
     }
     return null;
+  }
+
+  // Password Reset APIs
+  getClientByResetToken(token: string) {
+    return this.db.clients.find(c => c.resetToken === token);
+  }
+
+  getAdminByResetToken(token: string) {
+    return this.db.admins.find(a => a.resetToken === token);
+  }
+
+  setClientResetToken(email: string, token: string, expires: string) {
+    const client = this.getClientByEmail(email);
+    if (client) {
+      client.resetToken = token;
+      client.resetTokenExpires = expires;
+      this.save();
+      return client;
+    }
+    return null;
+  }
+
+  setAdminResetToken(email: string, token: string, expires: string) {
+    const admin = this.db.admins.find(a => a.email.toLowerCase() === email.toLowerCase());
+    if (admin) {
+      admin.resetToken = token;
+      admin.resetTokenExpires = expires;
+      this.save();
+      return admin;
+    }
+    return null;
+  }
+
+  resetClientPassword(email: string, token: string, newPasswordHash: string) {
+    const client = this.getClientByEmail(email);
+    if (client && client.resetToken === token) {
+      if (client.resetTokenExpires && new Date(client.resetTokenExpires) > new Date()) {
+        client.passwordHash = newPasswordHash;
+        client.resetToken = undefined;
+        client.resetTokenExpires = undefined;
+        this.save();
+        return true;
+      }
+    }
+    return false;
+  }
+
+  resetAdminPassword(email: string, token: string, newPasswordHash: string) {
+    const admin = this.db.admins.find(a => a.email.toLowerCase() === email.toLowerCase());
+    if (admin && admin.resetToken === token) {
+      if (admin.resetTokenExpires && new Date(admin.resetTokenExpires) > new Date()) {
+        admin.passwordHash = newPasswordHash;
+        admin.resetToken = undefined;
+        admin.resetTokenExpires = undefined;
+        this.save();
+        return true;
+      }
+    }
+    return false;
+  }
+
+  setClientEmailVerified(email: string, verified: boolean) {
+    const client = this.getClientByEmail(email);
+    if (client) {
+      client.emailVerified = verified;
+      this.save();
+      return true;
+    }
+    return false;
+  }
+
+  setAdminEmailVerified(email: string, verified: boolean) {
+    const admin = this.db.admins.find(a => a.email.toLowerCase() === email.toLowerCase());
+    if (admin) {
+      admin.emailVerified = verified;
+      this.save();
+      return true;
+    }
+    return false;
+  }
+
+  // Services APIs
+  getServices() {
+    return this.db.services || [];
+  }
+
+  addService(service: Omit<Service, 'id'>) {
+    const id = service.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || ('s_' + Math.random().toString(36).substring(2, 11));
+    const newService: Service = {
+      ...service,
+      id
+    };
+    if (!this.db.services) this.db.services = [];
+    this.db.services.push(newService);
+    this.save();
+    return newService;
+  }
+
+  updateService(id: string, updated: Partial<Service>) {
+    if (!this.db.services) this.db.services = [];
+    const idx = this.db.services.findIndex(s => s.id === id);
+    if (idx !== -1) {
+      this.db.services[idx] = { ...this.db.services[idx], ...updated };
+      this.save();
+      return this.db.services[idx];
+    }
+    return null;
+  }
+
+  deleteService(id: string) {
+    if (!this.db.services) this.db.services = [];
+    const initialLen = this.db.services.length;
+    this.db.services = this.db.services.filter(s => s.id !== id);
+    if (this.db.services.length !== initialLen) {
+      this.save();
+      return true;
+    }
+    return false;
+  }
+
+  // Pricing Plan APIs
+  getPricingPlans() {
+    return this.db.pricingPlans || [];
+  }
+
+  addPricingPlan(plan: Omit<PricingPlan, 'id'>) {
+    const id = plan.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || ('p_' + Math.random().toString(36).substring(2, 11));
+    const newPlan: PricingPlan = {
+      ...plan,
+      id
+    };
+    if (!this.db.pricingPlans) this.db.pricingPlans = [];
+    this.db.pricingPlans.push(newPlan);
+    this.save();
+    return newPlan;
+  }
+
+  updatePricingPlan(id: string, updated: Partial<PricingPlan>) {
+    if (!this.db.pricingPlans) this.db.pricingPlans = [];
+    const idx = this.db.pricingPlans.findIndex(p => p.id === id);
+    if (idx !== -1) {
+      this.db.pricingPlans[idx] = { ...this.db.pricingPlans[idx], ...updated };
+      this.save();
+      return this.db.pricingPlans[idx];
+    }
+    return null;
+  }
+
+  deletePricingPlan(id: string) {
+    if (!this.db.pricingPlans) this.db.pricingPlans = [];
+    const initialLen = this.db.pricingPlans.length;
+    this.db.pricingPlans = this.db.pricingPlans.filter(p => p.id !== id);
+    if (this.db.pricingPlans.length !== initialLen) {
+      this.save();
+      return true;
+    }
+    return false;
   }
 }
 

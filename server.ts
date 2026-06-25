@@ -3,12 +3,37 @@ import path from 'path';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import dotenv from 'dotenv';
+import fs from 'fs';
+import { initializeApp, getApps } from 'firebase-admin/app';
+import { getAuth } from 'firebase-admin/auth';
 import { createServer as createViteServer } from 'vite';
 import { db } from './src/server/db.js';
 import { generateChatResponse } from './src/server/gemini.js';
-import { sendContactFormEmails, sendNewsletterEmails, sendJobApplicationEmails, simulatedEmails } from './src/server/emailService.js';
+import { sendContactFormEmails, sendNewsletterEmails, sendJobApplicationEmails, simulatedEmails, sendPasswordResetEmail, sendEmailVerificationEmail } from './src/server/emailService.js';
 
 dotenv.config();
+
+const firebaseConfigPath = path.join(process.cwd(), 'firebase-applet-config.json');
+let firebaseConfig: any = {};
+try {
+  if (fs.existsSync(firebaseConfigPath)) {
+    firebaseConfig = JSON.parse(fs.readFileSync(firebaseConfigPath, 'utf8'));
+  }
+} catch (err) {
+  console.error('Failed to read firebase-applet-config.json:', err);
+}
+
+// Initialize Firebase Admin SDK
+try {
+  if (getApps().length === 0) {
+    initializeApp({
+      projectId: firebaseConfig.projectId
+    });
+    console.log('Firebase Admin initialized successfully with projectId:', firebaseConfig.projectId);
+  }
+} catch (err) {
+  console.error('Failed to initialize Firebase Admin:', err);
+}
 
 const JWT_SECRET = process.env.JWT_SECRET || 'deshwal_secret_corporate_token_2026_xyz';
 const PORT = 3000;
@@ -47,24 +72,59 @@ async function startServer() {
   }
 
   // --- AUTH ENDPOINTS ---
-  app.post('/api/auth/login', (req, res) => {
+  const loginHandler = async (req: any, res: any) => {
     const { username, password } = req.body;
     if (!username || !password) {
-      return res.status(400).json({ error: 'Username and password are required' });
+      return res.status(400).json({ error: 'Username and password are required', message: 'Username and password are required' });
     }
 
-    const admin = db.getAdminByUsername(username);
-    if (!admin) {
-      return res.status(401).json({ error: 'Invalid username or password' });
+    const adminUser = db.getAdminByUsername(username);
+    if (!adminUser) {
+      return res.status(401).json({ error: 'Invalid username or password', message: 'Invalid username or password' });
     }
 
-    const passwordMatch = bcrypt.compareSync(password, admin.passwordHash);
+    const passwordMatch = bcrypt.compareSync(password, adminUser.passwordHash);
     if (!passwordMatch) {
-      return res.status(401).json({ error: 'Invalid username or password' });
+      return res.status(401).json({ error: 'Invalid username or password', message: 'Invalid username or password' });
+    }
+
+    // --- Firebase Auth Verification Check ---
+    try {
+      let userRecord;
+      try {
+        userRecord = await getAuth().getUserByEmail(adminUser.email);
+      } catch (authError: any) {
+        if (authError.code === 'auth/user-not-found') {
+          // Auto-sync admin to Firebase Auth if not exists
+          userRecord = await getAuth().createUser({
+            email: adminUser.email,
+            password: password,
+            displayName: adminUser.username,
+            emailVerified: false
+          });
+        } else {
+          throw authError;
+        }
+      }
+
+      if (!userRecord.emailVerified) {
+        const verificationLink = await getAuth().generateEmailVerificationLink(adminUser.email);
+        await sendEmailVerificationEmail(adminUser.email, adminUser.username, verificationLink, 'admin');
+
+        return res.status(403).json({
+          error: 'Email not verified',
+          message: 'Your administrator email address has not been verified yet. We have dispatched a secure verification link to your email. Please check your inbox (or simulated emails) to verify and unlock access.',
+          verificationLink
+        });
+      } else {
+        db.setAdminEmailVerified(adminUser.email, true);
+      }
+    } catch (fbErr) {
+      console.error('Firebase Auth admin verification check error:', fbErr);
     }
 
     const token = jwt.sign(
-      { id: admin.id, username: admin.username, role: admin.role },
+      { id: adminUser.id, username: adminUser.username, role: adminUser.role },
       JWT_SECRET,
       { expiresIn: '24h' }
     );
@@ -72,13 +132,16 @@ async function startServer() {
     res.json({
       token,
       user: {
-        id: admin.id,
-        username: admin.username,
-        email: admin.email,
-        role: admin.role
+        id: adminUser.id,
+        username: adminUser.username,
+        email: adminUser.email,
+        role: adminUser.role
       }
     });
-  });
+  };
+
+  app.post('/api/auth/login', loginHandler);
+  app.post('/api/admin/login', loginHandler);
 
   app.get('/api/auth/me', authenticateToken, (req: any, res) => {
     const admin = db.getAdmins().find(a => a.id === req.user.id);
@@ -93,8 +156,116 @@ async function startServer() {
     });
   });
 
+  // --- PASSWORD RESET ENDPOINTS ---
+  app.post('/api/auth/forgot-password', async (req, res) => {
+    const { email, role } = req.body;
+    if (!email || !role) {
+      return res.status(400).json({ error: 'Email and role are required' });
+    }
+
+    try {
+      const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+      const expires = new Date(Date.now() + 3600000).toISOString(); // 1 hour
+
+      let userFound = false;
+      let userName = '';
+
+      if (role === 'client') {
+        const client = db.getClientByEmail(email);
+        if (client) {
+          userFound = true;
+          userName = client.name;
+          db.setClientResetToken(email, token, expires);
+        }
+      } else if (role === 'admin') {
+        const admin = db.getAdmins().find(a => a.email.toLowerCase() === email.toLowerCase());
+        if (admin) {
+          userFound = true;
+          userName = admin.username;
+          db.setAdminResetToken(email, token, expires);
+        }
+      }
+
+      if (userFound) {
+        // Construct the reset URL
+        const origin = req.headers.origin || process.env.APP_URL || 'http://localhost:3000';
+        const pathSuffix = role === 'admin' ? '/admin' : '/client-portal';
+        const resetLink = `${origin}${pathSuffix}?resetToken=${token}&email=${encodeURIComponent(email)}`;
+
+        // Send reset email
+        await sendPasswordResetEmail(email, userName, resetLink, role);
+      }
+
+      // To avoid user enumeration vulnerabilities, always return a success status
+      res.json({ success: true, message: 'If the email exists in our system, a password reset link has been dispatched successfully.' });
+    } catch (err: any) {
+      console.error('Forgot password API error:', err);
+      res.status(500).json({ error: 'An internal server error occurred while processing your request.' });
+    }
+  });
+
+  app.post('/api/auth/reset-password', async (req, res) => {
+    const { email, token, newPassword, role } = req.body;
+    if (!email || !token || !newPassword || !role) {
+      return res.status(400).json({ error: 'Email, token, newPassword, and role are required' });
+    }
+
+    try {
+      const salt = bcrypt.genSaltSync(10);
+      const passwordHash = bcrypt.hashSync(newPassword, salt);
+
+      let resetSuccess = false;
+      if (role === 'client') {
+        resetSuccess = db.resetClientPassword(email, token, passwordHash);
+      } else if (role === 'admin') {
+        resetSuccess = db.resetAdminPassword(email, token, passwordHash);
+      }
+
+      if (resetSuccess) {
+        // --- Firebase Auth password update and email validation ---
+        try {
+          let userRecord;
+          try {
+            userRecord = await getAuth().getUserByEmail(email);
+            await getAuth().updateUser(userRecord.uid, {
+              password: newPassword,
+              emailVerified: true // Resetting password via email token validates the account
+            });
+          } catch (authError: any) {
+            if (authError.code === 'auth/user-not-found') {
+              const displayName = role === 'admin' ? 'Admin' : 'Client';
+              await getAuth().createUser({
+                email,
+                password: newPassword,
+                displayName,
+                emailVerified: true
+              });
+            } else {
+              throw authError;
+            }
+          }
+          // Locally verify too
+          if (role === 'client') {
+            db.setClientEmailVerified(email, true);
+          } else {
+            db.setAdminEmailVerified(email, true);
+          }
+        } catch (fbErr) {
+          console.error('Firebase Auth sync error on reset password:', fbErr);
+        }
+
+        res.json({ success: true, message: 'Password has been updated successfully and account email has been validated!' });
+      } else {
+        res.status(400).json({ error: 'Invalid or expired password reset token.' });
+      }
+    } catch (err: any) {
+      console.error('Reset password API error:', err);
+      res.status(500).json({ error: 'Failed to reset password due to a server-side error.' });
+    }
+  });
+
   // --- CLIENT AUTH & PORTAL ENDPOINTS ---
-  app.post('/api/client/auth/signup', (req, res) => {
+  app.post('/api/client/auth/signup', async (req, res) => {
     const { name, email, companyName, phone, password } = req.body;
     if (!name || !email || !password || !phone) {
       return res.status(400).json({ error: 'Name, email, phone, and password are required' });
@@ -103,6 +274,21 @@ async function startServer() {
     const existingClient = db.getClientByEmail(email);
     if (existingClient) {
       return res.status(409).json({ error: 'A client with this email address already exists' });
+    }
+
+    // --- Firebase Auth User Creation & Verification Link ---
+    let verificationLink = '';
+    try {
+      const userRecord = await getAuth().createUser({
+        email,
+        password,
+        displayName: name,
+        emailVerified: false
+      });
+      verificationLink = await getAuth().generateEmailVerificationLink(email);
+      await sendEmailVerificationEmail(email, name, verificationLink, 'client');
+    } catch (authError: any) {
+      console.error('Firebase Auth signup sync error:', authError);
     }
 
     const salt = bcrypt.genSaltSync(10);
@@ -124,6 +310,8 @@ async function startServer() {
 
     res.status(201).json({
       token,
+      message: 'Account registered successfully! A secure verification link has been sent to your email. Please check your inbox (or simulated emails) to verify before logging in.',
+      verificationLink, // Included for convenient testing and development
       user: {
         id: newClient.id,
         name: newClient.name,
@@ -135,7 +323,7 @@ async function startServer() {
     });
   });
 
-  app.post('/api/client/auth/login', (req, res) => {
+  app.post('/api/client/auth/login', async (req, res) => {
     const { email, password } = req.body;
     if (!email || !password) {
       return res.status(400).json({ error: 'Email and password are required' });
@@ -149,6 +337,41 @@ async function startServer() {
     const passwordMatch = bcrypt.compareSync(password, client.passwordHash);
     if (!passwordMatch) {
       return res.status(401).json({ error: 'Invalid email or password' });
+    }
+
+    // --- Firebase Auth Verification Check ---
+    try {
+      let userRecord;
+      try {
+        userRecord = await getAuth().getUserByEmail(email);
+      } catch (authError: any) {
+        if (authError.code === 'auth/user-not-found') {
+          // Sync database client to Firebase Auth if not exists
+          userRecord = await getAuth().createUser({
+            email,
+            password,
+            displayName: client.name,
+            emailVerified: false
+          });
+        } else {
+          throw authError;
+        }
+      }
+
+      if (!userRecord.emailVerified) {
+        const verificationLink = await getAuth().generateEmailVerificationLink(email);
+        await sendEmailVerificationEmail(email, client.name, verificationLink, 'client');
+
+        return res.status(403).json({
+          error: 'Email not verified',
+          message: 'Your email address has not been verified yet. We have sent a secure Firebase Auth verification link. Please check your inbox (or simulated emails) to verify your account.',
+          verificationLink
+        });
+      } else {
+        db.setClientEmailVerified(email, true);
+      }
+    } catch (fbErr) {
+      console.error('Firebase Auth client verification check error:', fbErr);
     }
 
     const token = jwt.sign(
@@ -321,12 +544,97 @@ async function startServer() {
     res.json(updated);
   });
 
+  // --- SERVICES ENDPOINTS ---
+  app.get('/api/services', (req, res) => {
+    res.json(db.getServices());
+  });
+
+  const createServiceHandler = (req: any, res: any) => {
+    const { title, icon, desc, deliverables } = req.body;
+    if (!title || !desc) {
+      return res.status(400).json({ error: 'Title and description are required' });
+    }
+    const newService = db.addService({
+      title,
+      icon: icon || 'Code',
+      desc,
+      deliverables: deliverables || []
+    });
+    res.status(201).json(newService);
+  };
+  app.post('/api/services', authenticateToken, createServiceHandler);
+  app.post('/api/admin/services', authenticateToken, createServiceHandler);
+
+  const updateServiceHandler = (req: any, res: any) => {
+    const updated = db.updateService(req.params.id, req.body);
+    if (!updated) {
+      return res.status(404).json({ error: 'Service not found' });
+    }
+    res.json(updated);
+  };
+  app.put('/api/services/:id', authenticateToken, updateServiceHandler);
+  app.put('/api/admin/services/:id', authenticateToken, updateServiceHandler);
+
+  const deleteServiceHandler = (req: any, res: any) => {
+    const deleted = db.deleteService(req.params.id);
+    if (!deleted) {
+      return res.status(404).json({ error: 'Service not found' });
+    }
+    res.json({ success: true });
+  };
+  app.delete('/api/services/:id', authenticateToken, deleteServiceHandler);
+  app.delete('/api/admin/services/:id', authenticateToken, deleteServiceHandler);
+
+  // --- PRICING PLANS ENDPOINTS ---
+  app.get('/api/pricing', (req, res) => {
+    res.json(db.getPricingPlans());
+  });
+
+  const createPricingPlanHandler = (req: any, res: any) => {
+    const { name, price, period, tagline, icon, features, popular } = req.body;
+    if (!name || price === undefined) {
+      return res.status(400).json({ error: 'Name and price are required' });
+    }
+    const newPlan = db.addPricingPlan({
+      name,
+      price,
+      period: period || 'One-time',
+      tagline: tagline || '',
+      icon: icon || 'Zap',
+      features: features || [],
+      popular: popular || false
+    });
+    res.status(201).json(newPlan);
+  };
+  app.post('/api/pricing', authenticateToken, createPricingPlanHandler);
+  app.post('/api/admin/pricing', authenticateToken, createPricingPlanHandler);
+
+  const updatePricingPlanHandler = (req: any, res: any) => {
+    const updated = db.updatePricingPlan(req.params.id, req.body);
+    if (!updated) {
+      return res.status(404).json({ error: 'Pricing plan not found' });
+    }
+    res.json(updated);
+  };
+  app.put('/api/pricing/:id', authenticateToken, updatePricingPlanHandler);
+  app.put('/api/admin/pricing/:id', authenticateToken, updatePricingPlanHandler);
+
+  const deletePricingPlanHandler = (req: any, res: any) => {
+    const deleted = db.deletePricingPlan(req.params.id);
+    if (!deleted) {
+      return res.status(404).json({ error: 'Pricing plan not found' });
+    }
+    res.json({ success: true });
+  };
+  app.delete('/api/pricing/:id', authenticateToken, deletePricingPlanHandler);
+  app.delete('/api/admin/pricing/:id', authenticateToken, deletePricingPlanHandler);
+
   // --- BLOG ENDPOINTS ---
   app.get('/api/blogs', (req, res) => {
     res.json(db.getBlogs());
   });
 
-  app.post('/api/blogs', authenticateToken, (req, res) => {
+  const createBlogHandler = (req: any, res: any) => {
     const { title, slug, content, excerpt, category, author, image, readTime } = req.body;
     if (!title || !slug || !content || !category || !author) {
       return res.status(400).json({ error: 'Title, slug, content, category, and author are required' });
@@ -342,27 +650,33 @@ async function startServer() {
       readTime: readTime || '4 min read'
     });
     res.status(201).json(newBlog);
-  });
+  };
+  app.post('/api/blogs', authenticateToken, createBlogHandler);
+  app.post('/api/admin/blogs', authenticateToken, createBlogHandler);
 
-  app.put('/api/blogs/:id', authenticateToken, (req, res) => {
+  const updateBlogHandler = (req: any, res: any) => {
     const updated = db.updateBlog(req.params.id, req.body);
     if (!updated) {
       return res.status(404).json({ error: 'Blog not found' });
     }
     res.json(updated);
-  });
+  };
+  app.put('/api/blogs/:id', authenticateToken, updateBlogHandler);
+  app.put('/api/admin/blogs/:id', authenticateToken, updateBlogHandler);
 
-  app.delete('/api/blogs/:id', authenticateToken, (req, res) => {
+  const deleteBlogHandler = (req: any, res: any) => {
     db.deleteBlog(req.params.id);
     res.json({ success: true });
-  });
+  };
+  app.delete('/api/blogs/:id', authenticateToken, deleteBlogHandler);
+  app.delete('/api/admin/blogs/:id', authenticateToken, deleteBlogHandler);
 
   // --- PORTFOLIO ENDPOINTS ---
   app.get('/api/portfolios', (req, res) => {
     res.json(db.getPortfolios());
   });
 
-  app.post('/api/portfolios', authenticateToken, (req, res) => {
+  const createPortfolioHandler = (req: any, res: any) => {
     const { title, category, description, image, tags, client, website, challenge, solution, results, completionDate, featured } = req.body;
     if (!title || !category || !description) {
       return res.status(400).json({ error: 'Title, category, and description are required' });
@@ -382,25 +696,33 @@ async function startServer() {
       featured: !!featured
     });
     res.status(201).json(newPort);
-  });
+  };
+  app.post('/api/portfolios', authenticateToken, createPortfolioHandler);
+  app.post('/api/admin/portfolios', authenticateToken, createPortfolioHandler);
 
-  app.put('/api/portfolios/:id', authenticateToken, (req, res) => {
+  const updatePortfolioHandler = (req: any, res: any) => {
     const updated = db.updatePortfolio(req.params.id, req.body);
     if (!updated) {
       return res.status(404).json({ error: 'Portfolio not found' });
     }
     res.json(updated);
-  });
+  };
+  app.put('/api/portfolios/:id', authenticateToken, updatePortfolioHandler);
+  app.put('/api/admin/portfolios/:id', authenticateToken, updatePortfolioHandler);
 
-  app.delete('/api/portfolios/:id', authenticateToken, (req, res) => {
+  const deletePortfolioHandler = (req: any, res: any) => {
     db.deletePortfolio(req.params.id);
     res.json({ success: true });
-  });
+  };
+  app.delete('/api/portfolios/:id', authenticateToken, deletePortfolioHandler);
+  app.delete('/api/admin/portfolios/:id', authenticateToken, deletePortfolioHandler);
 
   // --- LEAD ENDPOINTS ---
-  app.get('/api/leads', authenticateToken, (req, res) => {
+  const getLeadsHandler = (req: any, res: any) => {
     res.json(db.getLeads());
-  });
+  };
+  app.get('/api/leads', authenticateToken, getLeadsHandler);
+  app.get('/api/admin/leads', authenticateToken, getLeadsHandler);
 
   app.post('/api/leads', (req, res) => {
     const { name, email, phone, service, plan, message } = req.body;
@@ -429,7 +751,7 @@ async function startServer() {
     res.status(201).json(lead);
   });
 
-  app.put('/api/leads/:id', authenticateToken, (req, res) => {
+  const updateLeadHandler = (req: any, res: any) => {
     const { status } = req.body;
     if (!status) {
       return res.status(400).json({ error: 'Status is required' });
@@ -439,17 +761,23 @@ async function startServer() {
       return res.status(404).json({ error: 'Lead not found' });
     }
     res.json(updated);
-  });
+  };
+  app.put('/api/leads/:id', authenticateToken, updateLeadHandler);
+  app.put('/api/admin/leads/:id', authenticateToken, updateLeadHandler);
 
-  app.delete('/api/leads/:id', authenticateToken, (req, res) => {
+  const deleteLeadHandler = (req: any, res: any) => {
     db.deleteLead(req.params.id);
     res.json({ success: true });
-  });
+  };
+  app.delete('/api/leads/:id', authenticateToken, deleteLeadHandler);
+  app.delete('/api/admin/leads/:id', authenticateToken, deleteLeadHandler);
 
   // --- NEWSLETTER SUBS ---
-  app.get('/api/newsletter', authenticateToken, (req, res) => {
+  const getNewsletterHandler = (req: any, res: any) => {
     res.json(db.getNewsletterSubs());
-  });
+  };
+  app.get('/api/newsletter', authenticateToken, getNewsletterHandler);
+  app.get('/api/admin/newsletter', authenticateToken, getNewsletterHandler);
 
   app.post('/api/newsletter', (req, res) => {
     const { email } = req.body;
@@ -467,10 +795,12 @@ async function startServer() {
     res.status(201).json(result);
   });
 
-  app.delete('/api/newsletter/:id', authenticateToken, (req, res) => {
+  const deleteNewsletterHandler = (req: any, res: any) => {
     db.deleteNewsletterSub(req.params.id);
     res.json({ success: true });
-  });
+  };
+  app.delete('/api/newsletter/:id', authenticateToken, deleteNewsletterHandler);
+  app.delete('/api/admin/newsletter/:id', authenticateToken, deleteNewsletterHandler);
 
   // --- CAREER ENDPOINTS ---
   app.get('/api/careers', (req, res) => {
@@ -511,9 +841,11 @@ async function startServer() {
   });
 
   // --- JOB APPLICATION ENDPOINTS ---
-  app.get('/api/applications', authenticateToken, (req, res) => {
+  const getApplicationsHandler = (req: any, res: any) => {
     res.json(db.getApplications());
-  });
+  };
+  app.get('/api/applications', authenticateToken, getApplicationsHandler);
+  app.get('/api/admin/applications', authenticateToken, getApplicationsHandler);
 
   app.post('/api/applications', (req, res) => {
     const { jobId, jobTitle, name, email, phone, coverLetter, portfolioUrl } = req.body;
@@ -543,7 +875,7 @@ async function startServer() {
     res.status(201).json(appRecord);
   });
 
-  app.put('/api/applications/:id', authenticateToken, (req, res) => {
+  const updateApplicationHandler = (req: any, res: any) => {
     const { status } = req.body;
     if (!status) {
       return res.status(400).json({ error: 'Status is required' });
@@ -553,12 +885,16 @@ async function startServer() {
       return res.status(404).json({ error: 'Application not found' });
     }
     res.json(updated);
-  });
+  };
+  app.put('/api/applications/:id', authenticateToken, updateApplicationHandler);
+  app.put('/api/admin/applications/:id', authenticateToken, updateApplicationHandler);
 
-  app.delete('/api/applications/:id', authenticateToken, (req, res) => {
+  const deleteApplicationHandler = (req: any, res: any) => {
     db.deleteApplication(req.params.id);
     res.json({ success: true });
-  });
+  };
+  app.delete('/api/applications/:id', authenticateToken, deleteApplicationHandler);
+  app.delete('/api/admin/applications/:id', authenticateToken, deleteApplicationHandler);
 
   // --- AI CHAT CONSULTANT ENDPOINT ---
   app.post('/api/ai-chat', async (req, res) => {
@@ -609,7 +945,7 @@ async function startServer() {
   });
 
   // --- DASHBOARD ANALYTICS ENDPOINT ---
-  app.get('/api/admin/stats', authenticateToken, (req, res) => {
+  const analyticsHandler = (req: any, res: any) => {
     const leads = db.getLeads();
     const subs = db.getNewsletterSubs();
     const blogs = db.getBlogs();
@@ -659,9 +995,19 @@ async function startServer() {
       totalPortfolios: ports.length,
       totalApplications: apps.length,
       leadsByService,
-      leadsOverTime
+      leadsOverTime,
+      counts: {
+        leads: leads.length,
+        newsletter: subs.length,
+        applications: apps.length,
+        portfolios: ports.length,
+        blogs: blogs.length
+      }
     });
-  });
+  };
+
+  app.get('/api/admin/stats', authenticateToken, analyticsHandler);
+  app.get('/api/admin/analytics', authenticateToken, analyticsHandler);
 
   // --- STATIC ASSETS & VITE INTEGRATION ---
   if (process.env.NODE_ENV !== 'production') {
