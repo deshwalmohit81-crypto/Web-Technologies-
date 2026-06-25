@@ -38,9 +38,8 @@ try {
 const JWT_SECRET = process.env.JWT_SECRET || 'deshwal_secret_corporate_token_2026_xyz';
 const PORT = 3000;
 
-async function startServer() {
-  const app = express();
-  app.use(express.json());
+const app = express();
+app.use(express.json());
 
   // CORS headers
   app.use((req, res, next) => {
@@ -1010,23 +1009,27 @@ async function startServer() {
   app.get('/api/admin/analytics', authenticateToken, analyticsHandler);
 
   // --- STATIC ASSETS & VITE INTEGRATION ---
-  if (process.env.NODE_ENV !== 'production') {
-    const vite = await createViteServer({
+  if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
+    createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
+    }).then((vite) => {
+      app.use(vite.middlewares);
+      app.listen(PORT, '0.0.0.0', () => {
+        console.log(`DESHWAL PVT LTD App Server listening on http://localhost:${PORT}`);
+      });
+    }).catch((err) => {
+      console.error('Failed to initialize Vite server:', err);
     });
-    app.use(vite.middlewares);
-  } else {
+  } else if (!process.env.VERCEL) {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`DESHWAL PVT LTD App Server listening on http://localhost:${PORT}`);
+    });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`DESHWAL PVT LTD App Server listening on http://localhost:${PORT}`);
-  });
-}
-
-startServer();
+export default app;
