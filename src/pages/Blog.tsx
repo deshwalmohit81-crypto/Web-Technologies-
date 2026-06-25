@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Search, Eye, Calendar, User, Clock, ChevronRight, X, BookOpen, Share2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Blog } from '../types.js';
+import { FALLBACK_BLOGS } from '../lib/staticFallback.js';
 
 interface BlogProps {
   selectedBlog: Blog | null;
@@ -18,12 +19,23 @@ export default function BlogPage({ selectedBlog, setSelectedBlog }: BlogProps) {
 
   useEffect(() => {
     fetch('/api/blogs')
-      .then((res) => res.json())
-      .then((data) => {
-        setBlogs(data);
-        setFilteredBlogs(data);
+      .then((res) => {
+        if (!res.ok) throw new Error();
+        return res.json();
       })
-      .catch(() => {});
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setBlogs(data);
+          setFilteredBlogs(data);
+        } else {
+          setBlogs(FALLBACK_BLOGS);
+          setFilteredBlogs(FALLBACK_BLOGS);
+        }
+      })
+      .catch(() => {
+        setBlogs(FALLBACK_BLOGS);
+        setFilteredBlogs(FALLBACK_BLOGS);
+      });
   }, []);
 
   const handleSearchAndFilter = (query: string, category: string) => {

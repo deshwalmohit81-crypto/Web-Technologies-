@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ArrowUpRight, Zap, Code, ShieldCheck, Users, Clock, Award, Star, Quote, ChevronRight, Activity, Cpu, Globe } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Blog, Portfolio } from '../types.js';
+import { FALLBACK_BLOGS, FALLBACK_PORTFOLIOS } from '../lib/staticFallback.js';
 
 interface HomeProps {
   setTab: (tab: string) => void;
@@ -21,14 +22,36 @@ export default function Home({ setTab, setSelectedBlog }: HomeProps) {
   // Load portfolio and blogs
   useEffect(() => {
     fetch('/api/blogs')
-      .then((res) => res.json())
-      .then((data) => setBlogs(data.slice(0, 3)))
-      .catch(() => {});
+      .then((res) => {
+        if (!res.ok) throw new Error();
+        return res.json();
+      })
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setBlogs(data.slice(0, 3));
+        } else {
+          setBlogs(FALLBACK_BLOGS.slice(0, 3));
+        }
+      })
+      .catch(() => {
+        setBlogs(FALLBACK_BLOGS.slice(0, 3));
+      });
 
     fetch('/api/portfolios')
-      .then((res) => res.json())
-      .then((data) => setPortfolios(data.filter((p: Portfolio) => p.featured).slice(0, 3)))
-      .catch(() => {});
+      .then((res) => {
+        if (!res.ok) throw new Error();
+        return res.json();
+      })
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setPortfolios(data.filter((p: Portfolio) => p.featured).slice(0, 3));
+        } else {
+          setPortfolios(FALLBACK_PORTFOLIOS.filter((p: Portfolio) => p.featured).slice(0, 3));
+        }
+      })
+      .catch(() => {
+        setPortfolios(FALLBACK_PORTFOLIOS.filter((p: Portfolio) => p.featured).slice(0, 3));
+      });
 
     // Animate stats counter
     const duration = 2000;

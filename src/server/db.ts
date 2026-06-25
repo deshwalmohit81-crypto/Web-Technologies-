@@ -451,17 +451,35 @@ class LocalDatabase {
         const data = fs.readFileSync(DB_FILE, 'utf-8');
         this.db = JSON.parse(data);
         // Migration checks to support client arrays safely
+        if (!this.db.leads) this.db.leads = [];
+        if (!this.db.newsletter) this.db.newsletter = [];
+        if (!this.db.careers) this.db.careers = [];
+        if (!this.db.applications) this.db.applications = [];
+        if (!this.db.blogs) this.db.blogs = [...defaultDb.blogs];
+        if (!this.db.portfolios) this.db.portfolios = [...defaultDb.portfolios];
         if (!this.db.clients) this.db.clients = [];
         if (!this.db.clientProjects) this.db.clientProjects = [];
         if (!this.db.clientTickets) this.db.clientTickets = [];
         if (!this.db.services) {
           this.db.services = [...defaultDb.services];
-          this.save();
         }
         if (!this.db.pricingPlans) {
           this.db.pricingPlans = [...defaultDb.pricingPlans];
-          this.save();
         }
+        if (!this.db.admins || this.db.admins.length === 0) {
+          const salt = bcrypt.genSaltSync(10);
+          const passwordHash = bcrypt.hashSync('Admin@Deshwal2026', salt);
+          this.db.admins = [
+            {
+              id: 'a1',
+              username: 'admin',
+              email: 'deshwalmohit.81@gmail.com',
+              passwordHash,
+              role: 'admin'
+            }
+          ];
+        }
+        this.save();
       } else {
         // Initialize admin password dynamically
         const salt = bcrypt.genSaltSync(10);

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Calendar, MapPin, Briefcase, DollarSign, ArrowRight, X, Mail, Phone, User, Link, CheckCircle2, ChevronDown, ChevronUp, Sparkles, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { JobListing } from '../types.js';
+import { FALLBACK_CAREERS } from '../lib/staticFallback.js';
 
 export default function Careers() {
   const [jobs, setJobs] = useState<JobListing[]>([]);
@@ -16,9 +17,20 @@ export default function Careers() {
 
   useEffect(() => {
     fetch('/api/careers')
-      .then((res) => res.json())
-      .then((data) => setJobs(data.filter((j: JobListing) => j.active)))
-      .catch(() => {});
+      .then((res) => {
+        if (!res.ok) throw new Error();
+        return res.json();
+      })
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setJobs(data.filter((j: JobListing) => j.active));
+        } else {
+          setJobs(FALLBACK_CAREERS.filter((j: JobListing) => j.active));
+        }
+      })
+      .catch(() => {
+        setJobs(FALLBACK_CAREERS.filter((j: JobListing) => j.active));
+      });
   }, []);
 
   const handleApply = (job: JobListing) => {

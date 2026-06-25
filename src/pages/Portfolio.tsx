@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Eye, ExternalLink, Calendar, User, CheckCircle2, ChevronRight, X, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Portfolio } from '../types.js';
+import { FALLBACK_PORTFOLIOS } from '../lib/staticFallback.js';
 
 export default function PortfolioPage() {
   const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
@@ -13,12 +14,23 @@ export default function PortfolioPage() {
 
   useEffect(() => {
     fetch('/api/portfolios')
-      .then((res) => res.json())
-      .then((data) => {
-        setPortfolios(data);
-        setFilteredPortfolios(data);
+      .then((res) => {
+        if (!res.ok) throw new Error();
+        return res.json();
       })
-      .catch(() => {});
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setPortfolios(data);
+          setFilteredPortfolios(data);
+        } else {
+          setPortfolios(FALLBACK_PORTFOLIOS);
+          setFilteredPortfolios(FALLBACK_PORTFOLIOS);
+        }
+      })
+      .catch(() => {
+        setPortfolios(FALLBACK_PORTFOLIOS);
+        setFilteredPortfolios(FALLBACK_PORTFOLIOS);
+      });
   }, []);
 
   const handleCategoryChange = (category: string) => {
